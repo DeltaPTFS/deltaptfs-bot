@@ -5,6 +5,7 @@
   "description": "Discord server setup bot for Delta Air Lines PTFS",
   "main": "src/index.js",
   "scripts": {
+    "build": "node --check src/index.js && node --check src/layout.js && node --check src/roles.js && node --check src/sheets.js",
     "start": "node src/index.js",
     "test": "node --test"
   },

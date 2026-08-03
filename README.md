@@ -133,7 +133,7 @@ The apply operation is idempotent: running it again skips matching channels and 
 
 ## Hosting configuration
 
-- **Build Command:** `npm install`
+- **Build Command:** `npm install && npm run build`
 - **Start Command:** `npm start`
 - **Environment variable:** `DISCORD_TOKEN` (set this to the token from the Discord Developer Portal; never commit it)
 - **Optional Sheets variables:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
@@ -154,6 +154,7 @@ Only members with **Manage Server** can see and run this command. Responses are 
 ```bash
 cp .env.example .env
 npm install
+npm run build
 npm test
 npm start
 ```
