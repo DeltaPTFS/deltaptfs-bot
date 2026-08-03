@@ -62,12 +62,6 @@ const SERVER_LAYOUT = [
     name: 'AIR TRAFFIC CONTROL',
     channels: [
       { name: 'atc-information', topic: 'ATC frequencies, active controllers, and operational notices.' },
-      { name: 'IRFD TWR [123.456]', type: 'voice' },
-      { name: 'IPPH TWR [123.457]', type: 'voice' },
-      { name: 'IZOL TWR [123.458]', type: 'voice' },
-      { name: 'ITKO TWR [123.459]', type: 'voice' },
-      { name: 'IBTH TWR [123.460]', type: 'voice' },
-      { name: 'ISAB TWR [123.461]', type: 'voice' },
     ],
   },
   {
@@ -125,13 +119,44 @@ const SERVER_LAYOUT = [
       { name: 'ATC Tower', type: 'voice' },
     ],
   },
+  // Discord permits at most 50 channels per category, so the complete
+  // frequency network is split between two categories kept at the bottom.
+  {
+    name: 'ATC FREQUENCIES 1',
+    bottom: true,
+    channels: [
+      'IRFD_DEL [121.750]', 'IRFD_GND [121.900]', 'IRFD_TWR [118.100]', 'IRFD_APP [120.550]',
+      'ITKO_DEL [121.700]', 'ITKO_GND [121.800]', 'ITKO_TWR [118.100]', 'ITKO_APP [119.100]',
+      'IZOL_DEL [121.650]', 'IZOL_GND [121.850]', 'IZOL_TWR [119.200]', 'IZOL_APP [120.700]',
+      'ILAR_DEL [121.900]', 'ILAR_GND [121.700]', 'ILAR_TWR [118.700]', 'ILAR_APP [120.200]',
+      'IPPH_DEL [121.600]', 'IPPH_GND [121.700]', 'IPPH_TWR [118.600]', 'IPPH_APP [119.400]',
+      'IMLR_DEL [121.950]', 'IMLR_GND [121.650]', 'IMLR_TWR [119.750]', 'IMLR_APP [120.900]',
+      'IPAP_DEL [121.900]', 'IPAP_GND [121.700]', 'IPAP_TWR [119.400]', 'IPAP_APP [120.600]',
+      'IKFL_DEL [121.850]', 'IKFL_GND [121.900]', 'IKFL_TWR [118.300]', 'IKFL_APP [119.000]',
+    ].map((name) => ({ name: `🔊 ${name}`, type: 'voice', flightDeckOnly: true })),
+  },
+  {
+    name: 'ATC FREQUENCIES 2',
+    bottom: true,
+    channels: [
+      'ISAU_DEL [121.650]', 'ISAU_GND [121.850]', 'ISAU_TWR [118.900]', 'ISAU_APP [120.450]',
+      'IBTH_DEL [121.700]', 'IBTH_GND [121.900]', 'IBTH_TWR [118.300]', 'IBTH_APP [119.900]',
+      'ILKL_DEL [121.600]', 'ILKL_GND [121.800]', 'ILKL_TWR [122.900]', 'ILKL_APP [123.200]',
+      'IDCS_DEL [121.700]', 'IDCS_GND [121.900]', 'IDCS_TWR [118.700]', 'IDCS_APP [119.700]',
+      'IIAB_DEL [121.650]', 'IIAB_GND [121.900]', 'IIAB_TWR [126.200]', 'IIAB_APP [125.500]',
+      'ISCM_DEL [121.850]', 'ISCM_GND [121.700]', 'ISCM_TWR [122.100]', 'ISCM_APP [124.300]',
+      'IGAR_DEL [121.600]', 'IGAR_GND [121.900]', 'IGAR_TWR [126.500]', 'IGAR_APP [125.900]',
+      'FORD_TWR [123.450]', 'FORD_APP [124.500]', 'QE_TWR [123.550]', 'QE_APP [124.600]',
+      'UNICOM [122.800]',
+    ].map((name) => ({ name: `🔊 ${name}`, type: 'voice', flightDeckOnly: true })),
+  },
 ];
 
 function formatLayout() {
   return SERVER_LAYOUT.map((category) => {
     const channels = category.channels.map((channel) => {
       const marker = channel.type === 'voice' ? '🔊' : '#';
-      return `  ${marker} ${channel.name}`;
+      return `  ${channel.name.startsWith('🔊 ') ? '' : `${marker} `}${channel.name}`;
     });
     const privacy = category.accessRoles ? ' (private)' : '';
     return [`**${category.name}${privacy}**`, ...channels].join('\n');

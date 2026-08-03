@@ -127,9 +127,14 @@ VOICE CHANNELS
   🔊 Gate A
   🔊 Gate B
   🔊 ATC Tower
+
+ATC FREQUENCIES 1 & 2 (kept at the bottom)
+  🔊 65 DEL, GND, TWR, APP, and UNICOM frequency channels
 ```
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
+
+The ATC frequency network is split across two categories because Discord limits a category to 50 channels. Everyone can connect and listen. Only **Chief Pilot**, **Captain**, **First Officer** (co-pilot), and **Air Traffic Control** can speak; listeners cannot use voice chat, soundboards, streaming, activities, reactions, threads, or application commands in those channels. Run `/bot-version` after deployment and confirm it reports **v1.2.0** before applying the layout.
 
 ## Hosting configuration
 

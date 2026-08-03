@@ -21,16 +21,17 @@ test('formatted preview includes private label and all channels', () => {
   assert.equal(preview.split('\n').filter((line) => line.startsWith('  ')).length, channelCount);
 });
 
-test('ATC category contains a tower frequency for every supported island', () => {
-  const atc = SERVER_LAYOUT.find(({ name }) => name === 'AIR TRAFFIC CONTROL');
-  assert.ok(atc);
-
-  const expectedAirports = ['IRFD', 'IPPH', 'IZOL', 'ITKO', 'IBTH', 'ISAB'];
-  for (const airport of expectedAirports) {
-    const tower = atc.channels.find(({ name }) => name.startsWith(`${airport} TWR [`));
-    assert.equal(tower?.type, 'voice', `${airport} must have a tower voice channel`);
-    assert.match(tower.name, /^\w{4} TWR \[\d{3}\.\d{3}\]$/);
-  }
+test('complete ATC frequency network is last, valid, and listen-only', () => {
+  const frequencyCategories = SERVER_LAYOUT.filter(({ bottom }) => bottom);
+  assert.deepEqual(frequencyCategories, SERVER_LAYOUT.slice(-2));
+  const channels = frequencyCategories.flatMap(({ channels }) => channels);
+  assert.equal(channels.length, 65);
+  assert.ok(frequencyCategories.every(({ channels: entries }) => entries.length <= 50));
+  assert.ok(channels.every(({ name, type, flightDeckOnly }) =>
+    /^🔊 (?:[A-Z]{2,4}_(?:DEL|GND|TWR|APP)|UNICOM) \[\d{3}\.\d{3}\]$/.test(name)
+      && type === 'voice' && flightDeckOnly));
+  assert.ok(channels.some(({ name }) => name === '🔊 IRFD_TWR [118.100]'));
+  assert.ok(channels.some(({ name }) => name === '🔊 UNICOM [122.800]'));
 });
 
 test('role hierarchy has unique names and required department roles', () => {

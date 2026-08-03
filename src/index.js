@@ -17,6 +17,7 @@ const {
   isSheetsConfigured,
 } = require('./sheets');
 const { startHealthServer } = require('./health');
+const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -61,8 +62,26 @@ const skyMilesCommand = new SlashCommandBuilder()
     .addStringOption((option) => option.setName('flight-id').setDescription('Flight or event identifier').setRequired(true))
     .addStringOption((option) => option.setName('reason').setDescription('Reason for the ledger entry').setRequired(true)));
 
+const versionCommand = new SlashCommandBuilder()
+  .setName('bot-version')
+  .setDescription('Show the deployed Delta Virtual Assistant version');
+
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
+}
+
+function splitMessage(content, limit = 1900) {
+  const chunks = [];
+  let chunk = '';
+  for (const line of content.split('\n')) {
+    if (chunk && chunk.length + line.length + 1 > limit) {
+      chunks.push(chunk);
+      chunk = '';
+    }
+    chunk += `${chunk ? '\n' : ''}${line}`;
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
 }
 
 function categoryOverwrites(guild, categoryDefinition, rolesByName) {
@@ -73,6 +92,35 @@ function categoryOverwrites(guild, categoryDefinition, rolesByName) {
     ...categoryDefinition.accessRoles.map((name) => ({
       id: rolesByName.get(name.toLowerCase()).id,
       allow: [PermissionFlagsBits.ViewChannel],
+    })),
+  ];
+}
+
+const FLIGHT_DECK_SPEAKER_ROLES = ['Chief Pilot', 'Captain', 'First Officer', 'Air Traffic Control'];
+
+function channelOverwrites(guild, channelDefinition, rolesByName) {
+  if (!channelDefinition.flightDeckOnly) return undefined;
+  return [
+    {
+      id: guild.roles.everyone.id,
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
+      deny: [
+        PermissionFlagsBits.Speak,
+        PermissionFlagsBits.Stream,
+        PermissionFlagsBits.UseSoundboard,
+        PermissionFlagsBits.UseExternalSounds,
+        PermissionFlagsBits.UseEmbeddedActivities,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.SendMessagesInThreads,
+        PermissionFlagsBits.CreatePublicThreads,
+        PermissionFlagsBits.CreatePrivateThreads,
+        PermissionFlagsBits.AddReactions,
+        PermissionFlagsBits.UseApplicationCommands,
+      ],
+    },
+    ...FLIGHT_DECK_SPEAKER_ROLES.map((name) => ({
+      id: rolesByName.get(name.toLowerCase()).id,
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
     })),
   ];
 }
@@ -104,6 +152,7 @@ async function findOrCreateCategory(guild, categoryDefinition, rolesByName) {
 
 async function applyRoles(guild) {
   await guild.roles.fetch();
+  await guild.members.fetchMe();
   const definitions = roleDefinitions();
   let created = 0;
   let skipped = 0;
@@ -137,10 +186,12 @@ async function applyRoles(guild) {
   const configuredRoles = definitions.map((definition) => guild.roles.cache.find(
     (role) => role.name.toLowerCase() === definition.name.toLowerCase(),
   ));
+  const manageableRoles = configuredRoles.filter((role) => role.editable);
+  const unmanageableRoles = configuredRoles.filter((role) => !role.editable);
   await guild.roles.setPositions(
-    configuredRoles.map((role, index) => ({
+    manageableRoles.map((role, index) => ({
       role: role.id,
-      position: definitions.length - index,
+      position: manageableRoles.length - index,
     })),
     'Order Delta Air Lines PTFS roles and category separators',
   );
@@ -150,9 +201,15 @@ async function applyRoles(guild) {
     (role) => role.name.toLowerCase() === appDefinition.name.toLowerCase(),
   );
   const botMember = guild.members.me ?? await guild.members.fetchMe();
-  if (!botMember.roles.cache.has(appRole.id)) await botMember.roles.add(appRole);
+  if (!botMember.roles.cache.has(appRole.id) && appRole.editable) await botMember.roles.add(appRole);
 
-  return { created, skipped };
+  return {
+    created,
+    skipped,
+    warnings: unmanageableRoles.length
+      ? [`Could not reorder roles above the bot: ${unmanageableRoles.map(({ name }) => name).join(', ')}.`]
+      : [],
+  };
 }
 
 async function applyLayout(guild) {
@@ -182,6 +239,13 @@ async function applyLayout(guild) {
           && normalizedName(channel.name) === expectedName,
       );
       if (existing) {
+        const permissionOverwrites = channelOverwrites(guild, channelDefinition, rolesByName);
+        if (permissionOverwrites) {
+          await existing.permissionOverwrites.set(
+            permissionOverwrites,
+            'Synchronize listen-only ATC frequency permissions',
+          );
+        }
         channelsSkipped += 1;
         continue;
       }
@@ -191,10 +255,20 @@ async function applyLayout(guild) {
         type,
         parent: category.id,
         topic: type === ChannelType.GuildText ? channelDefinition.topic : undefined,
+        permissionOverwrites: channelOverwrites(guild, channelDefinition, rolesByName),
         reason: 'Delta Air Lines PTFS server setup',
       });
       channelsCreated += 1;
     }
+  }
+
+  for (const categoryDefinition of SERVER_LAYOUT.filter(({ bottom }) => bottom)) {
+    const category = guild.channels.cache.find((channel) =>
+      channel.type === ChannelType.GuildCategory
+      && channel.name.toLowerCase() === categoryDefinition.name.toLowerCase());
+    await category.setPosition(guild.channels.cache.size - 1, {
+      reason: 'Keep ATC frequency categories at the bottom',
+    });
   }
 
   return {
@@ -203,14 +277,17 @@ async function applyLayout(guild) {
     channelsSkipped,
     rolesCreated: roleResult.created,
     rolesSkipped: roleResult.skipped,
+    warnings: roleResult.warnings,
   };
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
   health.markReady();
   try {
-    await readyClient.application.commands.set([setupCommand.toJSON(), skyMilesCommand.toJSON()]);
-    console.log(`Ready as ${readyClient.user.tag}. Server setup and SkyMiles commands are registered.`);
+    await readyClient.application.commands.set([
+      setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(),
+    ]);
+    console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
     console.error('Discord command registration failed:', error);
   }
@@ -271,6 +348,14 @@ async function handleSkyMiles(interaction) {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  if (interaction.commandName === 'bot-version') {
+    await interaction.reply({
+      content: `Delta Virtual Assistant **v${botVersion}** — full ATC frequency layout enabled.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (interaction.commandName === 'skymiles') {
     await handleSkyMiles(interaction);
     return;
@@ -284,10 +369,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   const mode = interaction.options.getString('mode', true);
   if (mode === 'preview') {
-    await interaction.reply({
-      content: `Nothing has been changed. Here is the proposed setup:\n\n__ROLES__\n${formatRoles()}\n\n__CHANNELS__\n${formatLayout()}`,
-      ephemeral: true,
-    });
+    const preview = splitMessage(
+      `Nothing has been changed. Here is the proposed setup:\n\n__ROLES__\n${formatRoles()}\n\n__CHANNELS__\n${formatLayout()}`,
+    );
+    await interaction.reply({ content: preview.shift(), ephemeral: true });
+    for (const content of preview) await interaction.followUp({ content, ephemeral: true });
     return;
   }
 
@@ -297,12 +383,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.editReply(
       `Setup complete: created ${result.categoriesCreated} categories, `
       + `${result.channelsCreated} channels, and ${result.rolesCreated} roles. `
-      + `Skipped ${result.channelsSkipped} existing channels and ${result.rolesSkipped} existing roles.`,
+      + `Skipped ${result.channelsSkipped} existing channels and ${result.rolesSkipped} existing roles.`
+      + (result.warnings.length ? `\n\n⚠️ ${result.warnings.join('\n⚠️ ')}` : ''),
     );
   } catch (error) {
-    console.error('Channel setup failed:', error);
+    console.error('Server setup failed:', error);
     await interaction.editReply(
-      'Setup failed. Make sure the bot has **Manage Channels** and **Manage Roles**, then try again.',
+      `Setup failed${error.code ? ` (Discord code ${error.code})` : ''}: `
+      + `\`${String(error.message || error).slice(0, 500)}\`. `
+      + 'If this is a role hierarchy error, move the bot role above the roles it must manage.',
     );
   }
 });
