@@ -137,7 +137,12 @@ The apply operation is idempotent: running it again skips matching channels and 
 - **Start Command:** `npm start`
 - **Environment variable:** `DISCORD_TOKEN` (set this to the token from the Discord Developer Portal; never commit it)
 - **Optional Sheets variables:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
+- **Port:** use the host-provided `PORT` value; locally it defaults to `3000`
 - **Runtime:** Node.js 20 or later
+
+The bot starts a small HTTP health server immediately so web-service hosts can detect its port while Discord connects. `GET /` returns deployment status with HTTP 200, and `GET /health` returns HTTP 200 only after Discord is ready. Configure the hosting health-check path as `/health`. Do not hard-code a production port—the bot automatically reads the platform's `PORT` environment variable.
+
+If your host supports background workers, that service type also works and does not require a port. On hosts that report **“No open ports detected,”** deploy this repository as a web service with the commands above; the included health server satisfies the port requirement.
 
 When inviting the bot, include the `bot` and `applications.commands` scopes. The bot needs **Manage Channels** and **Manage Roles** permissions to apply the layout.
 

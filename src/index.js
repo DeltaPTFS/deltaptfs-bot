@@ -16,6 +16,7 @@ const {
   getLeaderboard,
   isSheetsConfigured,
 } = require('./sheets');
+const { startHealthServer } = require('./health');
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -25,6 +26,7 @@ if (!token) {
 }
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const health = startHealthServer();
 
 const setupCommand = new SlashCommandBuilder()
   .setName('setup-server')
@@ -205,8 +207,17 @@ async function applyLayout(guild) {
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
-  await readyClient.application.commands.set([setupCommand.toJSON(), skyMilesCommand.toJSON()]);
-  console.log(`Ready as ${readyClient.user.tag}. Server setup and SkyMiles commands are registered.`);
+  health.markReady();
+  try {
+    await readyClient.application.commands.set([setupCommand.toJSON(), skyMilesCommand.toJSON()]);
+    console.log(`Ready as ${readyClient.user.tag}. Server setup and SkyMiles commands are registered.`);
+  } catch (error) {
+    console.error('Discord command registration failed:', error);
+  }
+});
+
+client.on(Events.Error, (error) => {
+  console.error('Discord client error:', error);
 });
 
 async function handleSkyMiles(interaction) {
@@ -296,4 +307,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.login(token);
+client.login(token).catch((error) => {
+  health.markError(error);
+  console.error('Discord login failed. Check DISCORD_TOKEN:', error);
+  setTimeout(() => process.exit(1), 1000);
+});
