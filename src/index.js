@@ -262,6 +262,21 @@ async function applyLayout(guild) {
     }
   }
 
+  // Migrate servers from the earlier two-category frequency layout after all
+  // replacement airport categories have been created successfully.
+  const legacyFrequencyCategories = guild.channels.cache.filter((channel) =>
+    channel.type === ChannelType.GuildCategory
+    && ['atc frequencies 1', 'atc frequencies 2'].includes(channel.name.toLowerCase()));
+  for (const legacyCategory of legacyFrequencyCategories.values()) {
+    const legacyChildren = guild.channels.cache.filter(
+      (channel) => channel.parentId === legacyCategory.id,
+    );
+    for (const legacyChannel of legacyChildren.values()) {
+      await legacyChannel.delete('Migrate to individual airport frequency categories');
+    }
+    await legacyCategory.delete('Migrate to individual airport frequency categories');
+  }
+
   for (const categoryDefinition of SERVER_LAYOUT.filter(({ bottom }) => bottom)) {
     const category = guild.channels.cache.find((channel) =>
       channel.type === ChannelType.GuildCategory

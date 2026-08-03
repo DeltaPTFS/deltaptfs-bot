@@ -128,13 +128,18 @@ VOICE CHANNELS
   🔊 Gate B
   🔊 ATC Tower
 
-ATC FREQUENCIES 1 & 2 (kept at the bottom)
-  🔊 65 DEL, GND, TWR, APP, and UNICOM frequency channels
+AIRPORT FREQUENCY CATEGORIES (kept at the bottom)
+  IRFD FREQUENCIES
+    🔊 IRFD_DEL [121.750]
+    🔊 IRFD_GND [121.900]
+    🔊 IRFD_TWR [118.100]
+    🔊 IRFD_APP [120.550]
+  ...one category for every other airport, plus UNICOM
 ```
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-The ATC frequency network is split across two categories because Discord limits a category to 50 channels. Everyone can connect and listen. Only **Chief Pilot**, **Captain**, **First Officer** (co-pilot), and **Air Traffic Control** can speak; listeners cannot use voice chat, soundboards, streaming, activities, reactions, threads, or application commands in those channels. Run `/bot-version` after deployment and confirm it reports **v1.2.0** before applying the layout.
+Every airport has its own bottom-of-server frequency category containing its DEL, GND, TWR, and APP channels where available. FORD and QE contain their TWR and APP channels, while UNICOM has its own category. Everyone can connect and listen. Only **Chief Pilot**, **Captain**, **First Officer** (co-pilot), and **Air Traffic Control** can speak; listeners cannot use voice chat, soundboards, streaming, activities, reactions, threads, or application commands in those channels. Applying the layout also migrates and removes the earlier `ATC FREQUENCIES 1` and `ATC FREQUENCIES 2` categories. Run `/bot-version` after deployment and confirm it reports **v1.2.0** before applying the layout.
 
 ## Hosting configuration
 

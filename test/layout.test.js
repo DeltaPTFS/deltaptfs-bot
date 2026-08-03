@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { SERVER_LAYOUT, formatLayout } = require('../src/layout');
+const { ATC_FREQUENCY_GROUPS, SERVER_LAYOUT, formatLayout } = require('../src/layout');
 const { ROLE_GROUPS, formatRoles, roleDefinitions } = require('../src/roles');
 
 test('layout category and channel names are unique', () => {
@@ -23,15 +23,20 @@ test('formatted preview includes private label and all channels', () => {
 
 test('complete ATC frequency network is last, valid, and listen-only', () => {
   const frequencyCategories = SERVER_LAYOUT.filter(({ bottom }) => bottom);
-  assert.deepEqual(frequencyCategories, SERVER_LAYOUT.slice(-2));
+  assert.deepEqual(frequencyCategories, SERVER_LAYOUT.slice(-ATC_FREQUENCY_GROUPS.length));
+  assert.equal(frequencyCategories.length, 18);
   const channels = frequencyCategories.flatMap(({ channels }) => channels);
   assert.equal(channels.length, 65);
-  assert.ok(frequencyCategories.every(({ channels: entries }) => entries.length <= 50));
+  assert.ok(frequencyCategories.every(({ channels: entries }) => entries.length <= 4));
   assert.ok(channels.every(({ name, type, flightDeckOnly }) =>
     /^🔊 (?:[A-Z]{2,4}_(?:DEL|GND|TWR|APP)|UNICOM) \[\d{3}\.\d{3}\]$/.test(name)
       && type === 'voice' && flightDeckOnly));
   assert.ok(channels.some(({ name }) => name === '🔊 IRFD_TWR [118.100]'));
   assert.ok(channels.some(({ name }) => name === '🔊 UNICOM [122.800]'));
+  for (const [airport] of ATC_FREQUENCY_GROUPS) {
+    const expectedName = airport === 'UNICOM' ? 'UNICOM FREQUENCY' : `${airport} FREQUENCIES`;
+    assert.ok(frequencyCategories.some(({ name }) => name === expectedName));
+  }
 });
 
 test('role hierarchy has unique names and required department roles', () => {
