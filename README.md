@@ -156,6 +156,8 @@ If your host supports background workers, that service type also works and does 
 
 When inviting the bot, include the `bot` and `applications.commands` scopes. The bot needs **Manage Channels** and **Manage Roles** permissions to apply the layout.
 
+If Discord returns code `50013`, setup now reports the exact role, category, channel, or permission update that Discord denied. A `50013` during role ordering or assignment is treated as a warning so channel creation can continue. Discord's Administrator permission does not bypass role hierarchy: the bot's managed role must still be above every role it needs to create, assign, or reorder.
+
 ## Use
 
 1. Start the bot and wait for its ready message.

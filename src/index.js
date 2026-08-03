@@ -156,6 +156,7 @@ async function applyRoles(guild) {
   const definitions = roleDefinitions();
   let created = 0;
   let skipped = 0;
+  const warnings = [];
 
   // New roles start near the bottom and push earlier roles upward, so creating
   // the hierarchy from highest to lowest preserves its intended order.
@@ -168,13 +169,18 @@ async function applyRoles(guild) {
       continue;
     }
 
-    await guild.roles.create({
-      name: definition.name,
-      color: definition.color,
-      hoist: definition.hoist ?? false,
-      permissions: (definition.permissions ?? []).map((name) => PermissionFlagsBits[name]),
-      reason: 'Delta Air Lines PTFS server setup',
-    });
+    try {
+      await guild.roles.create({
+        name: definition.name,
+        color: definition.color,
+        hoist: definition.hoist ?? false,
+        permissions: (definition.permissions ?? []).map((name) => PermissionFlagsBits[name]),
+        reason: 'Delta Air Lines PTFS server setup',
+      });
+    } catch (error) {
+      error.setupStep = `creating role ${definition.name}`;
+      throw error;
+    }
     created += 1;
   }
 
@@ -188,33 +194,59 @@ async function applyRoles(guild) {
   ));
   const manageableRoles = configuredRoles.filter((role) => role.editable);
   const unmanageableRoles = configuredRoles.filter((role) => !role.editable);
-  await guild.roles.setPositions(
-    manageableRoles.map((role, index) => ({
-      role: role.id,
-      position: manageableRoles.length - index,
-    })),
-    'Order Delta Air Lines PTFS roles and category separators',
-  );
+  try {
+    await guild.roles.setPositions(
+      manageableRoles.map((role, index) => ({
+        role: role.id,
+        position: manageableRoles.length - index,
+      })),
+      'Order Delta Air Lines PTFS roles and category separators',
+    );
+  } catch (error) {
+    if (error.code !== 50013) throw error;
+    warnings.push(
+      'Discord denied role reordering (50013), so channel setup continued without moving roles. '
+      + 'Move the bot role higher to reorder them later.',
+    );
+  }
 
   const appDefinition = definitions.find((definition) => definition.app);
   const appRole = guild.roles.cache.find(
     (role) => role.name.toLowerCase() === appDefinition.name.toLowerCase(),
   );
   const botMember = guild.members.me ?? await guild.members.fetchMe();
-  if (!botMember.roles.cache.has(appRole.id) && appRole.editable) await botMember.roles.add(appRole);
+  if (!botMember.roles.cache.has(appRole.id) && appRole.editable) {
+    try {
+      await botMember.roles.add(appRole);
+    } catch (error) {
+      if (error.code !== 50013) throw error;
+      warnings.push('Discord denied assigning the Delta Virtual Assistant role (50013); setup continued.');
+    }
+  }
+
+  if (unmanageableRoles.length) {
+    warnings.push(`Could not reorder roles above the bot: ${unmanageableRoles.map(({ name }) => name).join(', ')}.`);
+  }
 
   return {
     created,
     skipped,
-    warnings: unmanageableRoles.length
-      ? [`Could not reorder roles above the bot: ${unmanageableRoles.map(({ name }) => name).join(', ')}.`]
-      : [],
+    warnings,
   };
+}
+
+async function runSetupStep(step, operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    error.setupStep ??= step;
+    throw error;
+  }
 }
 
 async function applyLayout(guild) {
   await guild.channels.fetch();
-  const roleResult = await applyRoles(guild);
+  const roleResult = await runSetupStep('creating or checking roles', () => applyRoles(guild));
   const rolesByName = new Map(
     guild.roles.cache.map((role) => [role.name.toLowerCase(), role]),
   );
@@ -224,7 +256,10 @@ async function applyLayout(guild) {
   let channelsSkipped = 0;
 
   for (const categoryDefinition of SERVER_LAYOUT) {
-    const result = await findOrCreateCategory(guild, categoryDefinition, rolesByName);
+    const result = await runSetupStep(
+      `creating category ${categoryDefinition.name}`,
+      () => findOrCreateCategory(guild, categoryDefinition, rolesByName),
+    );
     const category = result.category;
     if (result.created) categoriesCreated += 1;
 
@@ -241,23 +276,26 @@ async function applyLayout(guild) {
       if (existing) {
         const permissionOverwrites = channelOverwrites(guild, channelDefinition, rolesByName);
         if (permissionOverwrites) {
-          await existing.permissionOverwrites.set(
-            permissionOverwrites,
-            'Synchronize listen-only ATC frequency permissions',
+          await runSetupStep(
+            `updating permissions for ${existing.name}`,
+            () => existing.permissionOverwrites.set(
+              permissionOverwrites,
+              'Synchronize listen-only ATC frequency permissions',
+            ),
           );
         }
         channelsSkipped += 1;
         continue;
       }
 
-      await guild.channels.create({
-        name: channelDefinition.name,
-        type,
-        parent: category.id,
-        topic: type === ChannelType.GuildText ? channelDefinition.topic : undefined,
-        permissionOverwrites: channelOverwrites(guild, channelDefinition, rolesByName),
-        reason: 'Delta Air Lines PTFS server setup',
-      });
+      await runSetupStep(`creating channel ${channelDefinition.name}`, () => guild.channels.create({
+          name: channelDefinition.name,
+          type,
+          parent: category.id,
+          topic: type === ChannelType.GuildText ? channelDefinition.topic : undefined,
+          permissionOverwrites: channelOverwrites(guild, channelDefinition, rolesByName),
+          reason: 'Delta Air Lines PTFS server setup',
+        }));
       channelsCreated += 1;
     }
   }
@@ -281,9 +319,14 @@ async function applyLayout(guild) {
     const category = guild.channels.cache.find((channel) =>
       channel.type === ChannelType.GuildCategory
       && channel.name.toLowerCase() === categoryDefinition.name.toLowerCase());
-    await category.setPosition(guild.channels.cache.size - 1, {
-      reason: 'Keep ATC frequency categories at the bottom',
-    });
+    try {
+      await category.setPosition(guild.channels.cache.size - 1, {
+        reason: 'Keep ATC frequency categories at the bottom',
+      });
+    } catch (error) {
+      if (error.code !== 50013) throw error;
+      roleResult.warnings.push(`Could not move ${category.name} to the bottom (50013).`);
+    }
   }
 
   return {
@@ -404,7 +447,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error('Server setup failed:', error);
     await interaction.editReply(
-      `Setup failed${error.code ? ` (Discord code ${error.code})` : ''}: `
+      `Setup failed during **${error.setupStep || 'an unknown step'}**`
+      + `${error.code ? ` (Discord code ${error.code})` : ''}: `
       + `\`${String(error.message || error).slice(0, 500)}\`. `
       + 'If this is a role hierarchy error, move the bot role above the roles it must manage.',
     );
