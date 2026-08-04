@@ -1,0 +1,19 @@
+{
+  "name": "delta-air-lines-ptfs-bot",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Discord server setup bot for Delta Air Lines PTFS",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node --check src/index.js && node --check src/health.js && node --check src/info.js && node --check src/layout.js && node --check src/permissions.js && node --check src/roles.js && node --check src/sheets.js",
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.2.0"
+  }
+}
