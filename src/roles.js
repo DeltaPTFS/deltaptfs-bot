@@ -92,12 +92,19 @@ const ROLE_GROUPS = [
 ];
 
 function roleDefinitions() {
-  return ROLE_GROUPS.flatMap((group) => [...group.roles, group.categoryRole]);
+  return ROLE_GROUPS.flatMap((group) => [
+    ...group.roles.map((role) => ({
+      ...role,
+      baseName: role.name,
+      name: `${role.name} | Delta PTFS`,
+    })),
+    group.categoryRole,
+  ]);
 }
 
 function formatRoles() {
   return ROLE_GROUPS.map((group) => [
-    ...group.roles.map((role) => `  @${role.name}`),
+    ...group.roles.map((role) => `  @${role.name} | Delta PTFS`),
     `  @${group.categoryRole.name}`,
   ].join('\n')).join('\n\n');
 }

@@ -40,11 +40,11 @@ test('complete ATC frequency network is last, valid, and listen-only', () => {
 });
 
 test('role hierarchy has unique names and required department roles', () => {
-  const roles = ROLE_GROUPS.flatMap((group) => group.roles);
+  const roles = roleDefinitions().filter(({ baseName }) => baseName);
   const names = roles.map(({ name }) => name.toLowerCase());
   assert.equal(new Set(names).size, names.length);
-  assert.ok(names.includes('senior administration'));
-  assert.ok(names.includes('skymiles member'));
+  assert.ok(names.includes('senior administration | delta ptfs'));
+  assert.ok(names.includes('skymiles member | delta ptfs'));
   assert.match(formatRoles(), /@━━ FLIGHT OPERATIONS ━━/);
   assert.match(formatRoles(), /@Lead of ATC Department/);
 });
@@ -60,11 +60,12 @@ test('role category separators appear below their member roles', () => {
   const definitions = roleDefinitions();
   for (const group of ROLE_GROUPS) {
     const preview = formatRoles();
-    const lastMember = `@${group.roles.at(-1).name}`;
+    const lastMember = `@${group.roles.at(-1).name} | Delta PTFS`;
     const separator = `@${group.categoryRole.name}`;
     assert.ok(preview.indexOf(lastMember) < preview.indexOf(separator));
     assert.ok(
-      definitions.indexOf(group.roles.at(-1)) < definitions.indexOf(group.categoryRole),
+      definitions.findIndex(({ baseName }) => baseName === group.roles.at(-1).name)
+        < definitions.indexOf(group.categoryRole),
       `${group.name} separator must be positioned below all member roles`,
     );
   }
@@ -76,6 +77,13 @@ test('SkyMiles roles follow the real Medallion tier order', () => {
     group.roles.map(({ name }) => name),
     ['Diamond Medallion', 'Platinum Medallion', 'Gold Medallion', 'Silver Medallion', 'SkyMiles Member'],
   );
+});
+
+test('member roles use Delta PTFS suffix while category separators do not', () => {
+  for (const definition of roleDefinitions()) {
+    if (definition.baseName) assert.equal(definition.name, `${definition.baseName} | Delta PTFS`);
+    else assert.match(definition.name, /^━━ .+ ━━$/);
+  }
 });
 
 test('operational categories grant access only to explicitly configured roles', () => {

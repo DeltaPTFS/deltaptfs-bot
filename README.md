@@ -4,57 +4,57 @@ The main Discord bot for Delta Air Lines PTFS. One command safely previews and c
 
 ## Proposed role hierarchy
 
-Running `/setup-server mode:Preview only` shows the complete role and channel plan without changing the server. Roles are created in this top-to-bottom hierarchy:
+Running `/setup mode:Preview only section:Roles and categories/channels` shows the complete role and channel plan without changing the server. Roles are created in this top-to-bottom hierarchy:
 
 ```text
-  @Chief Executive Officer
-  @Chief Operating Officer
-  @Chief Administrative Officer
-  @Chief Flight Operations Officer
-  @Chief Human Resources Officer
+  @Chief Executive Officer | Delta PTFS
+  @Chief Operating Officer | Delta PTFS
+  @Chief Administrative Officer | Delta PTFS
+  @Chief Flight Operations Officer | Delta PTFS
+  @Chief Human Resources Officer | Delta PTFS
   @━━ BOARD OF DIRECTORS ━━
-  @Chief of Staff
-  @Chief of Corporate Affairs
-  @Chief of Safety
+  @Chief of Staff | Delta PTFS
+  @Chief of Corporate Affairs | Delta PTFS
+  @Chief of Safety | Delta PTFS
   @━━ LEADERSHIP ━━
-  @Senior High Rank
-  @Lead of Cabin Crew Department
-  @Lead of Flight Deck Department
-  @Lead of ATC Department
-  @Lead of Ground Operations Department
+  @Senior High Rank | Delta PTFS
+  @Lead of Cabin Crew Department | Delta PTFS
+  @Lead of Flight Deck Department | Delta PTFS
+  @Lead of ATC Department | Delta PTFS
+  @Lead of Ground Operations Department | Delta PTFS
   @━━ EXECUTIVES ━━
-  @Operations Manager
-  @Department Manager
-  @Assistant Department Manager
-  @Supervisor
+  @Operations Manager | Delta PTFS
+  @Department Manager | Delta PTFS
+  @Assistant Department Manager | Delta PTFS
+  @Supervisor | Delta PTFS
   @━━ MIDDLE RANK ━━
-  @Senior Administration
-  @Administration
-  @Senior Moderation
-  @Moderation
+  @Senior Administration | Delta PTFS
+  @Administration | Delta PTFS
+  @Senior Moderation | Delta PTFS
+  @Moderation | Delta PTFS
   @━━ SERVER ADMINISTRATION ━━
-  @Chief Pilot
-  @Captain
-  @First Officer
-  @Air Traffic Control
-  @Cabin Crew
-  @Ground Crew
+  @Chief Pilot | Delta PTFS
+  @Captain | Delta PTFS
+  @First Officer | Delta PTFS
+  @Air Traffic Control | Delta PTFS
+  @Cabin Crew | Delta PTFS
+  @Ground Crew | Delta PTFS
   @━━ FLIGHT OPERATIONS ━━
-  @Diamond Medallion
-  @Platinum Medallion
-  @Gold Medallion
-  @Silver Medallion
-  @SkyMiles Member
+  @Diamond Medallion | Delta PTFS
+  @Platinum Medallion | Delta PTFS
+  @Gold Medallion | Delta PTFS
+  @Silver Medallion | Delta PTFS
+  @SkyMiles Member | Delta PTFS
   @━━ SKYMILES MEMBERS ━━
-  @Passenger
-  @Aviation Enthusiast
-  @Guest
+  @Passenger | Delta PTFS
+  @Aviation Enthusiast | Delta PTFS
+  @Guest | Delta PTFS
   @━━ COMMUNITY ━━
-  @Delta Virtual Assistant
+  @Delta Virtual Assistant | Delta PTFS
   @━━ APPLICATION ━━
 ```
 
-Each `━━ CATEGORY ━━` separator is a real Discord role placed below the roles in its section, as requested. Setup explicitly resets the positions on every run, so existing server roles or Discord's default role-creation position cannot accidentally move a separator above its members. Every member role and separator has its own unique, explicit hexadecimal color. Chief positions are grouped under the Board of Directors and Leadership sections; department leads are grouped under Executives. Senior Administration and Administration receive management permissions, while Senior Moderation and Moderation receive appropriately limited member-moderation permissions. Other roles are organizational and do not receive elevated Discord permissions. The bot assigns itself the `Delta Virtual Assistant` role during setup. Discord will not allow the bot to create or assign roles above its own highest managed role, so place the bot's managed integration role near the top before applying the setup.
+Each `━━ CATEGORY ━━` separator is a real Discord role placed below the roles in its section, as requested. Setup explicitly resets the positions on every run, so existing server roles or Discord's default role-creation position cannot accidentally move a separator above its members. Every member role and separator has its own unique, explicit hexadecimal color. Chief positions are grouped under the Board of Directors and Leadership sections; department leads are grouped under Executives. Senior Administration and Administration receive management permissions, while Senior Moderation and Moderation receive appropriately limited member-moderation permissions. Other roles are organizational and do not receive elevated Discord permissions. The bot assigns itself the `Delta Virtual Assistant | Delta PTFS` role during setup. Discord will not allow the bot to create or assign roles above its own highest managed role, so place the bot's managed integration role near the top before applying the setup.
 
 ### Tracking SkyMiles professionally
 
@@ -161,8 +161,8 @@ If Discord returns code `50013`, setup now reports the exact role, category, cha
 ## Use
 
 1. Start the bot and wait for its ready message.
-2. Run `/setup-server mode:Preview only` to review all roles and channels.
-3. Run `/setup-server mode:Apply layout` to create both systems in one operation.
+2. Run `/setup mode:Preview only section:Roles and categories/channels` to review all roles and channels.
+3. Run `/setup mode:Apply layout section:Roles and categories/channels` to create both systems in one operation.
 
 Only members with **Manage Server** can see and run this command. Responses are private to the person running it.
 
@@ -175,3 +175,11 @@ npm run build
 npm test
 npm start
 ```
+
+## Information sequence
+
+Members with **Manage Server** can run `/info` in the destination channel. The bot posts six supplied information sections and the five supplied banners in order. Every text section and every banner is sent as its own public Discord message; divider instructions are never posted.
+
+Banner files are stored as Base64 text under `assets/info/` and decoded into PNG attachments at runtime. This keeps the repository patch text-only for systems that do not support binary-file changes while preserving the supplied images in Discord.
+
+The `/setup` command has separate `mode` and `section` choices. Choose **Roles only**, **Categories and channels only**, or **Roles and categories/channels** in either preview or apply mode. Existing unbranded member roles are renamed to `[Role Name] | Delta PTFS`; separator roles such as `━━ LEADERSHIP ━━` retain their separator names.

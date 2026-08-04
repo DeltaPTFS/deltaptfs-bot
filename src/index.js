@@ -4,6 +4,7 @@ const {
   ChannelType,
   Client,
   Events,
+  AttachmentBuilder,
   GatewayIntentBits,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -17,6 +18,7 @@ const {
   isSheetsConfigured,
 } = require('./sheets');
 const { startHealthServer } = require('./health');
+const { INFO_MESSAGES, bannerAttachment } = require('./info');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -30,8 +32,8 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const health = startHealthServer();
 
 const setupCommand = new SlashCommandBuilder()
-  .setName('setup-server')
-  .setDescription('Preview or create the Delta Air Lines PTFS roles and channels')
+  .setName('setup')
+  .setDescription('Preview or apply Delta PTFS roles, channels, or both')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((option) =>
     option
@@ -41,6 +43,17 @@ const setupCommand = new SlashCommandBuilder()
       .addChoices(
         { name: 'Preview only', value: 'preview' },
         { name: 'Apply layout', value: 'apply' },
+      ),
+  )
+  .addStringOption((option) =>
+    option
+      .setName('section')
+      .setDescription('Choose which part of the server setup to process')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Categories and channels only', value: 'channels' },
+        { name: 'Roles only', value: 'roles' },
+        { name: 'Roles and categories/channels', value: 'both' },
       ),
   );
 
@@ -66,6 +79,11 @@ const versionCommand = new SlashCommandBuilder()
   .setName('bot-version')
   .setDescription('Show the deployed Delta Virtual Assistant version');
 
+const infoCommand = new SlashCommandBuilder()
+  .setName('info')
+  .setDescription('Post the complete Delta welcome and information sequence')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
+
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
 }
@@ -89,10 +107,14 @@ function categoryOverwrites(guild, categoryDefinition, rolesByName) {
 
   return [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    ...categoryDefinition.accessRoles.map((name) => ({
-      id: rolesByName.get(name.toLowerCase()).id,
+    ...categoryDefinition.accessRoles.flatMap((name) => {
+      const role = rolesByName.get(name.toLowerCase())
+        ?? rolesByName.get(`${name} | delta ptfs`.toLowerCase());
+      return role ? [{
+      id: role.id,
       allow: [PermissionFlagsBits.ViewChannel],
-    })),
+      }] : [];
+    }),
   ];
 }
 
@@ -118,10 +140,14 @@ function channelOverwrites(guild, channelDefinition, rolesByName) {
         PermissionFlagsBits.UseApplicationCommands,
       ],
     },
-    ...FLIGHT_DECK_SPEAKER_ROLES.map((name) => ({
-      id: rolesByName.get(name.toLowerCase()).id,
+    ...FLIGHT_DECK_SPEAKER_ROLES.flatMap((name) => {
+      const role = rolesByName.get(name.toLowerCase())
+        ?? rolesByName.get(`${name} | delta ptfs`.toLowerCase());
+      return role ? [{
+      id: role.id,
       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
-    })),
+      }] : [];
+    }),
   ];
 }
 
@@ -161,9 +187,18 @@ async function applyRoles(guild) {
   // New roles start near the bottom and push earlier roles upward, so creating
   // the hierarchy from highest to lowest preserves its intended order.
   for (const definition of definitions) {
-    const existing = guild.roles.cache.find(
+    let existing = guild.roles.cache.find(
       (role) => role.name.toLowerCase() === definition.name.toLowerCase(),
     );
+    const legacyRole = definition.baseName && guild.roles.cache.find(
+      (role) => role.name.toLowerCase() === definition.baseName.toLowerCase(),
+    );
+    if (!existing && legacyRole?.editable) {
+      existing = await legacyRole.edit({
+        name: definition.name,
+        reason: 'Apply Delta PTFS role naming format',
+      });
+    }
     if (existing) {
       skipped += 1;
       continue;
@@ -244,9 +279,9 @@ async function runSetupStep(step, operation) {
   }
 }
 
-async function applyLayout(guild) {
+async function applyChannels(guild) {
   await guild.channels.fetch();
-  const roleResult = await runSetupStep('creating or checking roles', () => applyRoles(guild));
+  await guild.roles.fetch();
   const rolesByName = new Map(
     guild.roles.cache.map((role) => [role.name.toLowerCase(), role]),
   );
@@ -254,6 +289,20 @@ async function applyLayout(guild) {
   let categoriesCreated = 0;
   let channelsCreated = 0;
   let channelsSkipped = 0;
+  const warnings = [];
+  const requiredRoleNames = new Set([
+    ...SERVER_LAYOUT.flatMap(({ accessRoles = [] }) => accessRoles),
+    ...FLIGHT_DECK_SPEAKER_ROLES,
+  ]);
+  const missingRoles = [...requiredRoleNames].filter((name) =>
+    !rolesByName.has(name.toLowerCase())
+    && !rolesByName.has(`${name} | delta ptfs`.toLowerCase()));
+  if (missingRoles.length) {
+    warnings.push(
+      `These access roles do not exist, so their channel overrides were skipped: ${missingRoles.join(', ')}. `
+      + 'Run /setup with Roles only, then run Categories and channels only again.',
+    );
+  }
 
   for (const categoryDefinition of SERVER_LAYOUT) {
     const result = await runSetupStep(
@@ -325,7 +374,7 @@ async function applyLayout(guild) {
       });
     } catch (error) {
       if (error.code !== 50013) throw error;
-      roleResult.warnings.push(`Could not move ${category.name} to the bottom (50013).`);
+      warnings.push(`Could not move ${category.name} to the bottom (50013).`);
     }
   }
 
@@ -333,9 +382,7 @@ async function applyLayout(guild) {
     categoriesCreated,
     channelsCreated,
     channelsSkipped,
-    rolesCreated: roleResult.created,
-    rolesSkipped: roleResult.skipped,
-    warnings: roleResult.warnings,
+    warnings,
   };
 }
 
@@ -343,7 +390,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   health.markReady();
   try {
     await readyClient.application.commands.set([
-      setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(),
+      setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -403,6 +450,30 @@ async function handleSkyMiles(interaction) {
   }
 }
 
+async function handleInfo(interaction) {
+  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need **Manage Server** to post the information sequence.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply();
+  let first = true;
+  for (const message of INFO_MESSAGES) {
+    const payload = message.banner
+      ? (() => {
+        const banner = bannerAttachment(message.banner);
+        return { files: [new AttachmentBuilder(banner.data, { name: banner.name })] };
+      })()
+      : { content: message.content };
+    if (first) {
+      await interaction.editReply(payload);
+      first = false;
+    } else {
+      await interaction.followUp(payload);
+    }
+  }
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -418,7 +489,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleSkyMiles(interaction);
     return;
   }
-  if (interaction.commandName !== 'setup-server') return;
+  if (interaction.commandName === 'info') {
+    await handleInfo(interaction);
+    return;
+  }
+  if (interaction.commandName !== 'setup') return;
 
   if (!interaction.inGuild()) {
     await interaction.reply({ content: 'Run this command inside a server.', ephemeral: true });
@@ -426,9 +501,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   const mode = interaction.options.getString('mode', true);
+  const section = interaction.options.getString('section', true);
   if (mode === 'preview') {
+    const sections = [];
+    if (section !== 'channels') sections.push(`__ROLES__\n${formatRoles()}`);
+    if (section !== 'roles') sections.push(`__CHANNELS__\n${formatLayout()}`);
     const preview = splitMessage(
-      `Nothing has been changed. Here is the proposed setup:\n\n__ROLES__\n${formatRoles()}\n\n__CHANNELS__\n${formatLayout()}`,
+      `Nothing has been changed. Here is the proposed setup:\n\n${sections.join('\n\n')}`,
     );
     await interaction.reply({ content: preview.shift(), ephemeral: true });
     for (const content of preview) await interaction.followUp({ content, ephemeral: true });
@@ -437,13 +516,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   await interaction.deferReply({ ephemeral: true });
   try {
-    const result = await applyLayout(interaction.guild);
-    await interaction.editReply(
-      `Setup complete: created ${result.categoriesCreated} categories, `
-      + `${result.channelsCreated} channels, and ${result.rolesCreated} roles. `
-      + `Skipped ${result.channelsSkipped} existing channels and ${result.rolesSkipped} existing roles.`
-      + (result.warnings.length ? `\n\n⚠️ ${result.warnings.join('\n⚠️ ')}` : ''),
-    );
+    const results = [];
+    const warnings = [];
+    if (section !== 'channels') {
+      const roles = await runSetupStep('creating or checking roles', () => applyRoles(interaction.guild));
+      results.push(`Roles: created ${roles.created}, skipped ${roles.skipped}.`);
+      warnings.push(...roles.warnings);
+    }
+    if (section !== 'roles') {
+      const channels = await applyChannels(interaction.guild);
+      results.push(
+        `Channels: created ${channels.categoriesCreated} categories and ${channels.channelsCreated} channels; `
+        + `skipped ${channels.channelsSkipped} existing channels.`,
+      );
+      warnings.push(...channels.warnings);
+    }
+    await interaction.editReply(`Setup complete. ${results.join(' ')}`
+      + (warnings.length ? `\n\n⚠️ ${warnings.join('\n⚠️ ')}` : ''));
   } catch (error) {
     console.error('Server setup failed:', error);
     await interaction.editReply(
