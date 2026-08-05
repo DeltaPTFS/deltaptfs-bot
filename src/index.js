@@ -4,7 +4,6 @@ const {
   ChannelType,
   Client,
   Events,
-  AttachmentBuilder,
   GatewayIntentBits,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -19,7 +18,7 @@ const {
   isSheetsConfigured,
 } = require('./sheets');
 const { startHealthServer } = require('./health');
-const { INFO_MESSAGES, bannerAttachment } = require('./info');
+const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -478,13 +477,14 @@ async function handleInfo(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
   for (const message of INFO_MESSAGES) {
-    const banner = bannerAttachment(message.banner);
-    await interaction.channel.send({
-      content: message.content,
-      files: [new AttachmentBuilder(banner.data, { name: banner.name })],
-    });
+    await interaction.channel.send(infoMessagePayload(message));
   }
-  await interaction.editReply(`Posted ${INFO_MESSAGES.length} standalone information messages.`);
+
+  const missingBanners = missingBannerEnvironmentKeys();
+  const bannerNote = missingBanners.length
+    ? ` Missing banner URL variables: ${missingBanners.join(', ')}.`
+    : '';
+  await interaction.editReply(`Posted ${INFO_MESSAGES.length} standalone information messages.${bannerNote}`);
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {

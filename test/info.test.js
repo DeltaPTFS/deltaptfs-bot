@@ -1,27 +1,41 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { INFO_MESSAGES, bannerAttachment } = require('../src/info');
+const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('../src/info');
 
-test('info sequence combines every section with its labeled banner', () => {
+test('info sequence combines every section with its labeled banner URL variable', () => {
   assert.equal(INFO_MESSAGES.length, 6);
-  assert.ok(INFO_MESSAGES.every(({ content, banner }) => content && banner));
+  assert.ok(INFO_MESSAGES.every(({ content, banner, bannerEnv }) => content && banner && bannerEnv));
   assert.ok(INFO_MESSAGES.every(({ content }) => !content?.includes('MESSAGE DIVIDER')));
   assert.ok(INFO_MESSAGES.filter(({ content }) => content).every(({ content }) => content.length <= 2000));
   assert.deepEqual(INFO_MESSAGES.map(({ banner }) => banner), [
-    'welcome.png',
-    'community-rules.png',
-    'notifications.png',
-    'events.png',
-    'flight-operations.png',
-    'skyteam.png',
+    'welcome',
+    'community-rules',
+    'notifications',
+    'events',
+    'flight-operations',
+    'skyteam',
   ]);
-  for (const { banner } of INFO_MESSAGES) {
-    const attachment = bannerAttachment(banner);
-    assert.equal(attachment.name, banner);
-    assert.ok(Buffer.isBuffer(attachment.data));
-    assert.ok(attachment.data.length > 0, `empty banner ${banner}`);
-    assert.equal(attachment.data.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.deepEqual(INFO_MESSAGES.map(({ bannerEnv }) => bannerEnv), [
+    'INFO_WELCOME_BANNER_URL',
+    'INFO_RULES_BANNER_URL',
+    'INFO_NOTIFICATIONS_BANNER_URL',
+    'INFO_EVENTS_BANNER_URL',
+    'INFO_FLIGHT_OPERATIONS_BANNER_URL',
+    'INFO_ASSISTANCE_BANNER_URL',
+  ]);
+});
+
+test('info payload places each banner inside the same Discord message as an embed image', () => {
+  const environment = Object.fromEntries(
+    INFO_MESSAGES.map((message) => [message.bannerEnv, `https://cdn.example.com/${message.banner}.png`]),
+  );
+
+  for (const message of INFO_MESSAGES) {
+    const payload = infoMessagePayload(message, environment);
+    assert.equal(payload.content, message.content);
+    assert.deepEqual(payload.embeds, [{ image: { url: `https://cdn.example.com/${message.banner}.png` } }]);
+    assert.equal(payload.files, undefined);
   }
 });
 
@@ -32,5 +46,18 @@ test('info command posts standalone channel messages', () => {
     entrypoint.indexOf('client.on(Events.InteractionCreate'),
   );
   assert.match(handler, /interaction\.channel\.send/);
+  assert.match(handler, /infoMessagePayload/);
   assert.doesNotMatch(handler, /interaction\.followUp/);
+  assert.doesNotMatch(handler, /AttachmentBuilder/);
+});
+
+test('missing banner variables are reported without blocking info posting', () => {
+  assert.deepEqual(missingBannerEnvironmentKeys({}), [
+    'INFO_WELCOME_BANNER_URL',
+    'INFO_RULES_BANNER_URL',
+    'INFO_NOTIFICATIONS_BANNER_URL',
+    'INFO_EVENTS_BANNER_URL',
+    'INFO_FLIGHT_OPERATIONS_BANNER_URL',
+    'INFO_ASSISTANCE_BANNER_URL',
+  ]);
 });
