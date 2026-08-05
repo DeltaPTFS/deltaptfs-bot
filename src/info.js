@@ -1,6 +1,3 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const INFO_MESSAGES = [
   {
     content: `# :information: Welcome to Delta Air Lines
@@ -10,8 +7,9 @@ Welcome aboard **Delta Air Lines**, a growing PTFS virtual airline focused on pr
 Our server offers realistic flight operations, organized community events, structured training, career opportunities, and continued development. Please review the information below before participating so you understand how our community operates.
 
 **Keep Climbing.** :logo:`,
+    banner: 'welcome',
+    bannerEnv: 'INFO_WELCOME_BANNER_URL',
   },
-  { banner: 'welcome.png' },
   {
     content: `# :rules: Community Rules
 
@@ -22,8 +20,9 @@ Do not spam, troll, exploit, impersonate staff, falsely claim a position, or int
 Follow all instructions given by authorized Delta staff during official operations. Use every channel for its intended purpose and comply with both the **Discord Terms of Service** and **Roblox Community Standards**.
 
 Consequences may include a warning, temporary suspension, removal from a department, or permanent removal from the community, depending on the seriousness and frequency of the violation.`,
+    banner: 'community-rules',
+    bannerEnv: 'INFO_RULES_BANNER_URL',
   },
-  { banner: 'community-rules.png' },
   {
     content: `# :roles: Notification Roles
 
@@ -32,8 +31,9 @@ Notification roles are available through the **reaction-role panel at the bottom
 Select only the roles that match your interests. Available notifications may include flights, events, hiring, giveaways, announcements, development updates, training sessions, and other important server activities.
 
 You may add or remove your notification roles at any time by reacting or removing your reaction from the corresponding emoji.`,
+    banner: 'notifications',
+    bannerEnv: 'INFO_NOTIFICATIONS_BANNER_URL',
   },
-  { banner: 'notifications.png' },
   {
     content: `# :events: Community Events
 
@@ -42,8 +42,9 @@ Delta Air Lines regularly hosts scheduled flights, training sessions, community 
 Event details will include the date, start time, participation requirements, and any available positions. Members should read each event announcement carefully and arrive on time when they confirm attendance.
 
 Major events may have limited space, so participation may be handled through reaction sign-ups, threads, or designated registration forms.`,
+    banner: 'events',
+    bannerEnv: 'INFO_EVENTS_BANNER_URL',
   },
-  { banner: 'events.png' },
   {
     content: `# :operations: Flight Operations
 
@@ -58,8 +59,9 @@ Accepted applicants must complete the required training and certification proces
 Questions about applications, training, roles, or flight participation should be directed to our HelpDesk:
 
 > :support: **[Visit the Delta HelpDesk](https://discord.com/channels/1533702595800076310/1533882344220528740)**`,
+    banner: 'flight-operations',
+    bannerEnv: 'INFO_FLIGHT_OPERATIONS_BANNER_URL',
   },
-  { banner: 'skyteam.png' },
   {
     content: `# :support: Need Assistance?
 
@@ -70,13 +72,28 @@ When requesting help, clearly explain the issue and provide any relevant screens
 Thank you for choosing **Delta Air Lines**.
 
 -# :SkyTeamLogo: **Keep Climbing, Delta Air Lines.**`,
+    banner: 'skyteam',
+    bannerEnv: 'INFO_ASSISTANCE_BANNER_URL',
   },
 ];
 
-function bannerAttachment(filename) {
-  const encodedPath = path.join(__dirname, '..', 'assets', 'info', `${filename}.base64`);
-  const encoded = fs.readFileSync(encodedPath, 'utf8').replace(/\s/g, '');
-  return { data: Buffer.from(encoded, 'base64'), name: filename };
+function bannerUrl(message, environment = process.env) {
+  return environment[message.bannerEnv]?.trim() || null;
 }
 
-module.exports = { INFO_MESSAGES, bannerAttachment };
+function infoMessagePayload(message, environment = process.env) {
+  const url = bannerUrl(message, environment);
+  const payload = { content: message.content };
+  if (url) {
+    payload.embeds = [{ image: { url } }];
+  }
+  return payload;
+}
+
+function missingBannerEnvironmentKeys(environment = process.env) {
+  return INFO_MESSAGES
+    .map((message) => message.bannerEnv)
+    .filter((key) => !environment[key]?.trim());
+}
+
+module.exports = { INFO_MESSAGES, bannerUrl, infoMessagePayload, missingBannerEnvironmentKeys };

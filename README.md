@@ -147,6 +147,7 @@ Every airport has its own bottom-of-server frequency category containing its DEL
 - **Start Command:** `npm start`
 - **Environment variable:** `DISCORD_TOKEN` (set this to the token from the Discord Developer Portal; never commit it)
 - **Optional Sheets variables:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
+- **Optional info banner variables:** `INFO_WELCOME_BANNER_URL`, `INFO_RULES_BANNER_URL`, `INFO_NOTIFICATIONS_BANNER_URL`, `INFO_EVENTS_BANNER_URL`, `INFO_FLIGHT_OPERATIONS_BANNER_URL`, and `INFO_ASSISTANCE_BANNER_URL`
 - **Port:** use the host-provided `PORT` value; locally it defaults to `3000`
 - **Runtime:** Node.js 20 or later
 
@@ -178,8 +179,23 @@ npm start
 
 ## Information sequence
 
-Members with **Manage Server** can run `/info` in the destination channel. The bot posts six supplied information sections and the five supplied banners in order. Every text section and every banner is sent as its own public Discord message; divider instructions are never posted.
+Members with **Manage Server** can run `/info` in the destination channel. The bot posts six standalone public messages without replying to another public message. Each message contains its title, body, and matching banner in the same Discord message. The Flight Operations message uses the Flight Operations banner, while the Assistance message uses the SkyTeam banner. Divider instructions are never posted.
 
-Banner files are stored as Base64 text under `assets/info/` and decoded into PNG attachments at runtime. This keeps the repository patch text-only for systems that do not support binary-file changes while preserving the supplied images in Discord.
+To keep PRs compatible with GitHub's web editor and conflict resolver, banner image files are not committed to the repository. Upload the banners somewhere Discord can display them, such as a private Discord channel/CDN link or your hosting provider's static files, then set these environment variables before running `/info`:
+
+```env
+INFO_WELCOME_BANNER_URL=https://example.com/welcome.png
+INFO_RULES_BANNER_URL=https://example.com/community-rules.png
+INFO_NOTIFICATIONS_BANNER_URL=https://example.com/notifications.png
+INFO_EVENTS_BANNER_URL=https://example.com/events.png
+INFO_FLIGHT_OPERATIONS_BANNER_URL=https://example.com/flight-operations.png
+INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
+```
+
+If a banner URL is missing, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
 
 The `/setup` command has separate `mode` and `section` choices. Choose **Roles only**, **Categories and channels only**, or **Roles and categories/channels** in either preview or apply mode. Existing unbranded member roles are renamed to `[Role Name] | Delta PTFS`; separator roles such as `━━ LEADERSHIP ━━` retain their separator names.
+
+### ATC voice permissions
+
+Every airport frequency channel receives explicit permission overwrites for every configured member role. Board, Leadership, Executive, Middle Rank, Server Administration, and all Flight Operations roles can connect and speak. Air Traffic Control additionally receives Discord's **Priority Speaker** permission. SkyMiles and Community roles can see and join the channels but cannot speak. Streaming/video, soundboards, external sounds, and embedded activities are disabled for everyone in ATC frequency channels. Running the channels section of `/setup` again synchronizes these settings on existing channels.

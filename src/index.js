@@ -4,13 +4,13 @@ const {
   ChannelType,
   Client,
   Events,
-  AttachmentBuilder,
   GatewayIntentBits,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } = require('discord.js');
 const { SERVER_LAYOUT, formatLayout } = require('./layout');
 const { formatRoles, roleDefinitions } = require('./roles');
+const { atcRolePolicies } = require('./permissions');
 const {
   awardMiles,
   getBalance,
@@ -18,7 +18,7 @@ const {
   isSheetsConfigured,
 } = require('./sheets');
 const { startHealthServer } = require('./health');
-const { INFO_MESSAGES, bannerAttachment } = require('./info');
+const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -118,37 +118,56 @@ function categoryOverwrites(guild, categoryDefinition, rolesByName) {
   ];
 }
 
-const FLIGHT_DECK_SPEAKER_ROLES = ['Chief Pilot', 'Captain', 'First Officer', 'Air Traffic Control'];
+const ATC_MEDIA_DENIES = [
+  PermissionFlagsBits.Stream,
+  PermissionFlagsBits.UseSoundboard,
+  PermissionFlagsBits.UseExternalSounds,
+  PermissionFlagsBits.UseEmbeddedActivities,
+];
+
+function configuredRole(rolesByName, name) {
+  return rolesByName.get(`${name} | delta ptfs`.toLowerCase())
+    ?? rolesByName.get(name.toLowerCase());
+}
 
 function channelOverwrites(guild, channelDefinition, rolesByName) {
   if (!channelDefinition.flightDeckOnly) return undefined;
-  return [
-    {
-      id: guild.roles.everyone.id,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
-      deny: [
-        PermissionFlagsBits.Speak,
-        PermissionFlagsBits.Stream,
-        PermissionFlagsBits.UseSoundboard,
-        PermissionFlagsBits.UseExternalSounds,
-        PermissionFlagsBits.UseEmbeddedActivities,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.SendMessagesInThreads,
-        PermissionFlagsBits.CreatePublicThreads,
-        PermissionFlagsBits.CreatePrivateThreads,
-        PermissionFlagsBits.AddReactions,
-        PermissionFlagsBits.UseApplicationCommands,
-      ],
-    },
-    ...FLIGHT_DECK_SPEAKER_ROLES.flatMap((name) => {
-      const role = rolesByName.get(name.toLowerCase())
-        ?? rolesByName.get(`${name} | delta ptfs`.toLowerCase());
-      return role ? [{
-      id: role.id,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
-      }] : [];
-    }),
+
+  const listenerDenies = [
+    PermissionFlagsBits.Speak,
+    PermissionFlagsBits.PrioritySpeaker,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.SendMessagesInThreads,
+    PermissionFlagsBits.CreatePublicThreads,
+    PermissionFlagsBits.CreatePrivateThreads,
+    PermissionFlagsBits.AddReactions,
+    PermissionFlagsBits.UseApplicationCommands,
+    ...ATC_MEDIA_DENIES,
   ];
+  const overwrites = [{
+    id: guild.roles.everyone.id,
+    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
+    deny: listenerDenies,
+  }];
+
+  for (const policy of atcRolePolicies()) {
+    const role = configuredRole(rolesByName, policy.name);
+    if (!role) continue;
+    overwrites.push({
+      id: role.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.Connect,
+        ...(policy.canSpeak ? [PermissionFlagsBits.Speak, PermissionFlagsBits.UseVAD] : []),
+        ...(policy.prioritySpeaker ? [PermissionFlagsBits.PrioritySpeaker] : []),
+      ],
+      deny: [
+        ...ATC_MEDIA_DENIES,
+        ...(!policy.canSpeak ? [PermissionFlagsBits.Speak, PermissionFlagsBits.PrioritySpeaker] : []),
+      ],
+    });
+  }
+  return overwrites;
 }
 
 async function findOrCreateCategory(guild, categoryDefinition, rolesByName) {
@@ -292,7 +311,7 @@ async function applyChannels(guild) {
   const warnings = [];
   const requiredRoleNames = new Set([
     ...SERVER_LAYOUT.flatMap(({ accessRoles = [] }) => accessRoles),
-    ...FLIGHT_DECK_SPEAKER_ROLES,
+    ...atcRolePolicies().map(({ name }) => name),
   ]);
   const missingRoles = [...requiredRoleNames].filter((name) =>
     !rolesByName.has(name.toLowerCase())
@@ -456,22 +475,16 @@ async function handleInfo(interaction) {
     return;
   }
 
-  await interaction.deferReply();
-  let first = true;
+  await interaction.deferReply({ ephemeral: true });
   for (const message of INFO_MESSAGES) {
-    const payload = message.banner
-      ? (() => {
-        const banner = bannerAttachment(message.banner);
-        return { files: [new AttachmentBuilder(banner.data, { name: banner.name })] };
-      })()
-      : { content: message.content };
-    if (first) {
-      await interaction.editReply(payload);
-      first = false;
-    } else {
-      await interaction.followUp(payload);
-    }
+    await interaction.channel.send(infoMessagePayload(message));
   }
+
+  const missingBanners = missingBannerEnvironmentKeys();
+  const bannerNote = missingBanners.length
+    ? ` Missing banner URL variables: ${missingBanners.join(', ')}.`
+    : '';
+  await interaction.editReply(`Posted ${INFO_MESSAGES.length} standalone information messages.${bannerNote}`);
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
