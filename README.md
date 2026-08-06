@@ -139,7 +139,7 @@ AIRPORT FREQUENCY CATEGORIES (kept at the bottom)
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Every airport has its own bottom-of-server frequency category containing its DEL, GND, TWR, and APP channels where available. FORD and QE contain their TWR and APP channels, while UNICOM has its own category. Everyone can connect and listen. Only **Chief Pilot**, **Captain**, **First Officer** (co-pilot), and **Air Traffic Control** can speak; listeners cannot use voice chat, soundboards, streaming, activities, reactions, threads, or application commands in those channels. Applying the layout also migrates and removes the earlier `ATC FREQUENCIES 1` and `ATC FREQUENCIES 2` categories. Run `/bot-version` after deployment and confirm it reports **v1.2.0** before applying the layout.
+Every airport has its own bottom-of-server frequency category containing its DEL, GND, TWR, and APP channels where available. FORD and QE contain their TWR and APP channels, while UNICOM has its own category. Everyone can connect and listen. Only **Chief Pilot**, **Captain**, **First Officer** (co-pilot), and **Air Traffic Control** can speak; listeners cannot use voice chat, soundboards, streaming, activities, reactions, threads, or application commands in those channels. Applying the layout also migrates and removes the earlier `ATC FREQUENCIES 1` and `ATC FREQUENCIES 2` categories. Run `/bot-version` after deployment and confirm it reports **v2.1.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -148,6 +148,7 @@ Every airport has its own bottom-of-server frequency category containing its DEL
 - **Environment variable:** `DISCORD_TOKEN` (set this to the token from the Discord Developer Portal; never commit it)
 - **Optional Sheets variables:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
 - **Optional info banner variables:** `INFO_WELCOME_BANNER_URL`, `INFO_RULES_BANNER_URL`, `INFO_NOTIFICATIONS_BANNER_URL`, `INFO_EVENTS_BANNER_URL`, `INFO_FLIGHT_OPERATIONS_BANNER_URL`, and `INFO_ASSISTANCE_BANNER_URL`
+- **Roblox role-sync variable:** `ROBLOX_COMMUNITY_ID` (the numeric ID for the [Delta Roblox Community](https://www.roblox.com/share/g/650682730))
 - **Port:** use the host-provided `PORT` value; locally it defaults to `3000`
 - **Runtime:** Node.js 20 or later
 
@@ -181,11 +182,11 @@ npm start
 
 Members with **Manage Server** can run `/info` in the destination channel. The bot posts six standalone public messages without replying to another public message. Each message contains its title, body, and matching banner in the same Discord message. The Flight Operations message uses the Flight Operations banner, while the Assistance message uses the SkyTeam banner. Divider instructions are never posted.
 
-Each standalone message uses two coordinated Discord embeds: the supplied banner is displayed first, followed by the original Delta information in a separate formatted embed. Both embeds use Delta navy (`#071D49`) for their accent line, and the content embed includes a clean divider beneath its title. This reproduces only the requested layout and does not copy wording from the formatting reference.
+Each standalone message uses one Discord embed containing its title, existing Delta Air Lines PTFS wording, and matching banner. The embed uses Delta navy (`#071D49`) for its accent color. The added divider line has been removed. Discord renders a full-width embed image after the embed description, keeping the banner and information inside the same card and message.
 
 Information messages automatically look up the server's custom emoji by name and send Discord's complete `<:name:id>` representation, which is required for bot-authored messages. The sequence uses `information`, `rules`, `roles`, `events`, `support`, `feedback`, and the updated `skyteamlogo` name. If any custom emoji is unavailable, the bot substitutes a standard Unicode emoji so the message never shows a broken `:name:` label. The Flight Operations heading uses the renamed `support` emoji.
 
-The command has six optional attachment fields named **welcome**, **community-rules**, **notifications**, **events**, **flight-operations**, and **skyteam**. Upload the supplied image in its matching field when running `/info`; the bot places it above that section's text. A command upload takes priority over a configured banner URL.
+The command has six optional attachment fields named **welcome**, **community-rules**, **notifications**, **events**, **flight-operations**, and **skyteam**. Upload the supplied image in its matching field when running `/info`; the bot includes it in that section's embed. A command upload takes priority over a configured banner URL.
 
 For repeat use without selecting the files each time, upload the banners somewhere Discord can display them, such as a private Discord channel/CDN link or your hosting provider's static files, then set these environment variables. To keep PRs compatible with GitHub's web editor and conflict resolver, banner image files are not committed to the repository:
 
@@ -199,6 +200,18 @@ INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
 ```
 
 If neither a command upload nor a banner URL is available, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
+
+## Roblox Community role synchronization
+
+The captcha and Roblox OAuth verification panel have been removed. Discord roles can instead mirror ranks from the [Delta Roblox Community](https://www.roblox.com/share/g/650682730). Set `ROBLOX_COMMUNITY_ID` to the Community's numeric group ID (open the share link and copy the ID from the resulting Community URL), then restart the bot.
+
+Roblox rank names must match Discord role names. For example, Roblox rank `Captain` maps to `Captain | Delta PTFS`. The bot removes other Discord roles whose names match ranks in that same Roblox Community, then grants the member's current rank. It never changes unrelated Discord roles.
+
+1. A Board of Directors or Leadership member runs `/update user-role user:@Member roblox-username:ExactRobloxName` once. This records the approved Roblox username as the member's server nickname and synchronizes their role.
+2. The member can later run `/getrole` with no options. The bot uses the Leadership-approved server nickname and fetches their current Roblox Community rank.
+3. Leadership cannot update a member whose highest Discord role is equal to or above theirs, or another member in their own configured division.
+
+This is an administrative rank-sync workflow, not account-ownership verification. Leadership must confirm the Roblox username belongs to the selected Discord member before approving the first update. The bot needs **Manage Roles** and **Manage Nicknames**, and its role must be above every role/member it changes. Public Roblox endpoints are used only to resolve the username and read Community membership; no Roblox password, cookie, OAuth secret, or API key is collected.
 
 The `/setup` command has separate `mode` and `section` choices. Choose **Roles only**, **Categories and channels only**, or **Roles and categories/channels** in either preview or apply mode. Existing unbranded member roles are renamed to `[Role Name] | Delta PTFS`; separator roles such as `━━ LEADERSHIP ━━` retain their separator names.
 

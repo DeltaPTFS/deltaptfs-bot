@@ -45,6 +45,7 @@ test('role hierarchy has unique names and required department roles', () => {
   assert.equal(new Set(names).size, names.length);
   assert.ok(names.includes('senior administration | delta ptfs'));
   assert.ok(names.includes('skymiles member | delta ptfs'));
+  assert.ok(names.includes('captain | delta ptfs'));
   assert.match(formatRoles(), /@━━ FLIGHT OPERATIONS ━━/);
   assert.match(formatRoles(), /@Lead of ATC Department/);
 });

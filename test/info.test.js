@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const {
   INFO_MESSAGES,
   DELTA_BLUE,
-  INFO_DIVIDER,
   infoMessagePayload,
   missingBannerEnvironmentKeys,
   resolveInfoEmojis,
@@ -15,8 +14,9 @@ test('info sequence combines every section with its labeled banner URL variable'
   assert.ok(INFO_MESSAGES.every(({ content, banner, bannerEnv }) => content && banner && bannerEnv));
   assert.ok(INFO_MESSAGES.every(({ content }) => !content?.includes('MESSAGE DIVIDER')));
   assert.ok(INFO_MESSAGES.filter(({ content }) => content).every(({ content }) => content.length <= 2000));
+  assert.ok(INFO_MESSAGES.every(({ content }) => !/Delta Air Lines(?! PTFS)/.test(content)));
   assert.deepEqual(INFO_MESSAGES.map(({ content }) => content.split('\n')[0]), [
-    '# :information: Welcome to Delta Air Lines',
+    '# :information: Welcome to Delta Air Lines PTFS',
     '# :rules: Community Rules',
     '# :roles: Notification Roles',
     '# :events: Community Events',
@@ -41,7 +41,7 @@ test('info sequence combines every section with its labeled banner URL variable'
   ]);
 });
 
-test('info payload places a Delta-blue banner above its formatted content embed', () => {
+test('info payload places the banner and text in one Delta-blue embed', () => {
   const environment = Object.fromEntries(
     INFO_MESSAGES.map((message) => [message.bannerEnv, `https://cdn.example.com/${message.banner}.png`]),
   );
@@ -49,16 +49,12 @@ test('info payload places a Delta-blue banner above its formatted content embed'
   for (const message of INFO_MESSAGES) {
     const payload = infoMessagePayload(message, environment);
     assert.equal(payload.content, undefined);
-    assert.equal(payload.embeds.length, 2);
-    assert.deepEqual(payload.embeds[0], {
-      color: DELTA_BLUE,
-      image: { url: `https://cdn.example.com/${message.banner}.png` },
-    });
-    assert.equal(payload.embeds[1].color, DELTA_BLUE);
-    assert.ok(payload.embeds[1].title);
-    assert.match(payload.embeds[1].description, new RegExp(`^${INFO_DIVIDER}`));
+    assert.equal(payload.embeds.length, 1);
+    assert.equal(payload.embeds[0].color, DELTA_BLUE);
+    assert.ok(payload.embeds[0].title);
+    assert.deepEqual(payload.embeds[0].image, { url: `https://cdn.example.com/${message.banner}.png` });
     assert.ok(!/:(information|rules|roles|events|support|feedback|skyteamlogo):/.test(
-      `${payload.embeds[1].title} ${payload.embeds[1].description}`,
+      `${payload.embeds[0].title} ${payload.embeds[0].description}`,
     ));
     assert.equal(payload.files, undefined);
   }
@@ -91,6 +87,8 @@ test('an uploaded banner takes priority over its configured banner URL', () => {
 
   assert.deepEqual(payload.embeds[0], {
     color: DELTA_BLUE,
+    title: 'ℹ️ Welcome to Delta Air Lines PTFS',
+    description: payload.embeds[0].description,
     image: { url: 'https://cdn.discordapp.com/attachments/uploaded.png' },
   });
 });
@@ -100,8 +98,8 @@ test('info payload still posts a formatted content embed when no banner is suppl
 
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].color, DELTA_BLUE);
-  assert.equal(payload.embeds[0].title, 'ℹ️ Welcome to Delta Air Lines');
-  assert.match(payload.embeds[0].description, new RegExp(`^${INFO_DIVIDER}`));
+  assert.equal(payload.embeds[0].title, 'ℹ️ Welcome to Delta Air Lines PTFS');
+  assert.equal(payload.embeds[0].image, undefined);
 });
 
 test('info command posts standalone channel messages', () => {

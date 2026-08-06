@@ -4,7 +4,8 @@ function startHealthServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 3000);
   const state = { discordReady: false, error: null };
 
-  const server = http.createServer((request, response) => {
+  const server = http.createServer(async (request, response) => {
+    if (options.requestHandler && await options.requestHandler(request, response)) return;
     const isHealthCheck = request.url === '/health';
     const statusCode = isHealthCheck && !state.discordReady ? 503 : 200;
     response.writeHead(statusCode, { 'Content-Type': 'application/json' });

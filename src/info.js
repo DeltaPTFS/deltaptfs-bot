@@ -1,8 +1,8 @@
 const INFO_MESSAGES = [
   {
-    content: `# :information: Welcome to Delta Air Lines
+    content: `# :information: Welcome to Delta Air Lines PTFS
 
-Welcome aboard **Delta Air Lines**, a growing PTFS virtual airline focused on professionalism, teamwork, realism, and an enjoyable experience for every member. Whether you join us as a passenger, crew member, future applicant, or aviation enthusiast, we are excited to have you become part of our community.
+Welcome aboard **Delta Air Lines PTFS**, a growing PTFS virtual airline focused on professionalism, teamwork, realism, and an enjoyable experience for every member. Whether you join us as a passenger, crew member, future applicant, or aviation enthusiast, we are excited to have you become part of our community.
 
 Our server offers realistic flight operations, organized community events, structured training, career opportunities, and continued development. Please review the information below before participating so you understand how our community operates.
 
@@ -37,7 +37,7 @@ You may add or remove your notification roles at any time by reacting or removin
   {
     content: `# :events: Community Events
 
-Delta Air Lines regularly hosts scheduled flights, training sessions, community activities, giveaways, celebrations, and other special events.
+Delta Air Lines PTFS regularly hosts scheduled flights, training sessions, community activities, giveaways, celebrations, and other special events.
 
 Event details will include the date, start time, participation requirements, and any available positions. Members should read each event announcement carefully and arrive on time when they confirm attendance.
 
@@ -69,9 +69,9 @@ Our HelpDesk is available for application questions, department assistance, repo
 
 When requesting help, clearly explain the issue and provide any relevant screenshots or information. Please allow the staff team enough time to review your request and avoid repeatedly pinging or messaging multiple staff members about the same matter.
 
-Thank you for choosing **Delta Air Lines**.
+Thank you for choosing **Delta Air Lines PTFS**.
 
--# :skyteamlogo: **Keep Climbing, Delta Air Lines.**`,
+-# :skyteamlogo: **Keep Climbing, Delta Air Lines PTFS.**`,
     banner: 'skyteam',
     bannerEnv: 'INFO_ASSISTANCE_BANNER_URL',
   },
@@ -88,7 +88,6 @@ const INFO_EMOJI_FALLBACKS = Object.freeze({
 });
 
 const DELTA_BLUE = 0x071D49;
-const INFO_DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 
 function resolveInfoEmojis(content, guild = null) {
   return content.replace(/:([A-Za-z][A-Za-z0-9_-]*):/g, (token, requestedName) => {
@@ -114,16 +113,10 @@ function infoMessagePayload(message, environment = process.env, uploadedBannerUr
   const contentEmbed = {
     color: DELTA_BLUE,
     title: heading.replace(/^#\s*/, ''),
-    description: `${INFO_DIVIDER}\n\n${bodyLines.join('\n').trim()}`,
+    description: bodyLines.join('\n').trim(),
   };
-  const payload = { embeds: [contentEmbed] };
-  if (url) {
-    payload.embeds.unshift({
-      color: DELTA_BLUE,
-      image: { url },
-    });
-  }
-  return payload;
+  if (url) contentEmbed.image = { url };
+  return { embeds: [contentEmbed] };
 }
 
 function missingBannerEnvironmentKeys(environment = process.env) {
@@ -136,7 +129,6 @@ module.exports = {
   INFO_MESSAGES,
   INFO_EMOJI_FALLBACKS,
   DELTA_BLUE,
-  INFO_DIVIDER,
   bannerUrl,
   infoMessagePayload,
   missingBannerEnvironmentKeys,
