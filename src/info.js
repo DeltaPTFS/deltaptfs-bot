@@ -87,6 +87,9 @@ const INFO_EMOJI_FALLBACKS = Object.freeze({
   skyteamlogo: '✈️',
 });
 
+const DELTA_BLUE = 0x071D49;
+const INFO_DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+
 function resolveInfoEmojis(content, guild = null) {
   return content.replace(/:([A-Za-z][A-Za-z0-9_-]*):/g, (token, requestedName) => {
     const normalizedName = requestedName.toLowerCase();
@@ -106,9 +109,19 @@ function bannerUrl(message, environment = process.env, uploadedBannerUrl = null)
 
 function infoMessagePayload(message, environment = process.env, uploadedBannerUrl = null, guild = null) {
   const url = bannerUrl(message, environment, uploadedBannerUrl);
-  const payload = { content: resolveInfoEmojis(message.content, guild) };
+  const resolvedContent = resolveInfoEmojis(message.content, guild);
+  const [heading, ...bodyLines] = resolvedContent.split('\n');
+  const contentEmbed = {
+    color: DELTA_BLUE,
+    title: heading.replace(/^#\s*/, ''),
+    description: `${INFO_DIVIDER}\n\n${bodyLines.join('\n').trim()}`,
+  };
+  const payload = { embeds: [contentEmbed] };
   if (url) {
-    payload.embeds = [{ image: { url } }];
+    payload.embeds.unshift({
+      color: DELTA_BLUE,
+      image: { url },
+    });
   }
   return payload;
 }
@@ -122,6 +135,8 @@ function missingBannerEnvironmentKeys(environment = process.env) {
 module.exports = {
   INFO_MESSAGES,
   INFO_EMOJI_FALLBACKS,
+  DELTA_BLUE,
+  INFO_DIVIDER,
   bannerUrl,
   infoMessagePayload,
   missingBannerEnvironmentKeys,
