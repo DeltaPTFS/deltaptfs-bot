@@ -181,7 +181,7 @@ npm start
 
 Members with **Manage Server** can run `/info` in the destination channel. The bot posts six standalone public messages without replying to another public message. Each message contains its title, body, and matching banner in the same Discord message. The Flight Operations message uses the Flight Operations banner, while the Assistance message uses the SkyTeam banner. Divider instructions are never posted.
 
-All information-message icons use standard Unicode emoji, so they render without requiring server-specific custom emoji IDs. This includes the headings as well as the application link, HelpDesk link, and closing line.
+Information messages automatically look up the server's custom emoji by name and send Discord's complete `<:name:id>` representation, which is required for bot-authored messages. The sequence uses `information`, `rules`, `roles`, `events`, `support`, `feedback`, and the updated `skyteamlogo` name. If any custom emoji is unavailable, the bot substitutes a standard Unicode emoji so the message never shows a broken `:name:` label. The Flight Operations heading uses the renamed `support` emoji.
 
 The command has six optional attachment fields named **welcome**, **community-rules**, **notifications**, **events**, **flight-operations**, and **skyteam**. Upload the supplied image in its matching field when running `/info`; the bot places it beneath that section's text. A command upload takes priority over a configured banner URL.
 

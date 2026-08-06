@@ -484,7 +484,12 @@ async function handleInfo(interaction) {
   await interaction.deferReply({ ephemeral: true });
   for (const message of INFO_MESSAGES) {
     const uploadedBanner = interaction.options.getAttachment(message.banner);
-    await interaction.channel.send(infoMessagePayload(message, process.env, uploadedBanner?.url));
+    await interaction.channel.send(infoMessagePayload(
+      message,
+      process.env,
+      uploadedBanner?.url,
+      interaction.guild,
+    ));
   }
 
   const uploadedBannerNames = new Set(
