@@ -6,7 +6,7 @@ Welcome aboard **Delta Air Lines**, a growing PTFS virtual airline focused on pr
 
 Our server offers realistic flight operations, organized community events, structured training, career opportunities, and continued development. Please review the information below before participating so you understand how our community operates.
 
-**Keep Climbing.** :logo:`,
+**Keep Climbing.** 🔺`,
     banner: 'welcome',
     bannerEnv: 'INFO_WELCOME_BANNER_URL',
   },
@@ -46,24 +46,24 @@ Major events may have limited space, so participation may be handled through rea
     bannerEnv: 'INFO_EVENTS_BANNER_URL',
   },
   {
-    content: `# :operations: Flight Operations
+    content: `# :support: Flight Operations
 
 Flight Operations are hosted **multiple times throughout the day**, providing regular opportunities for passengers and qualified staff to participate. Each flight announcement will include the aircraft, route, departure time, available positions, and instructions for joining.
 
 Applications for Flight Operations remain open and are **reviewed every Monday**. Applicants should provide complete and truthful responses, as incomplete or low-effort submissions may be denied.
 
-> :ExternalLink: **[Apply for Flight Operations](https://forms.gle/WvXSf82Tvz3YJ4EJ7)**
+> 🔗 **[Apply for Flight Operations](https://forms.gle/WvXSf82Tvz3YJ4EJ7)**
 
 Accepted applicants must complete the required training and certification process before independently serving in an operational position.
 
 Questions about applications, training, roles, or flight participation should be directed to our HelpDesk:
 
-> :support: **[Visit the Delta HelpDesk](https://discord.com/channels/1533702595800076310/1533882344220528740)**`,
+> 🛟 **[Visit the Delta HelpDesk](https://discord.com/channels/1533702595800076310/1533882344220528740)**`,
     banner: 'flight-operations',
     bannerEnv: 'INFO_FLIGHT_OPERATIONS_BANNER_URL',
   },
   {
-    content: `# :support: Need Assistance?
+    content: `# :feedback: Need Assistance?
 
 Our HelpDesk is available for application questions, department assistance, reports, technical problems, and general support.
 
@@ -71,19 +71,42 @@ When requesting help, clearly explain the issue and provide any relevant screens
 
 Thank you for choosing **Delta Air Lines**.
 
--# :SkyTeamLogo: **Keep Climbing, Delta Air Lines.**`,
+-# :skyteamlogo: **Keep Climbing, Delta Air Lines.**`,
     banner: 'skyteam',
     bannerEnv: 'INFO_ASSISTANCE_BANNER_URL',
   },
 ];
 
+const INFO_EMOJI_FALLBACKS = Object.freeze({
+  information: 'ℹ️',
+  rules: '📜',
+  roles: '🔔',
+  events: '🎉',
+  support: '🎧',
+  feedback: '🛟',
+  skyteamlogo: '✈️',
+});
+
+function resolveInfoEmojis(content, guild = null) {
+  return content.replace(/:([A-Za-z][A-Za-z0-9_-]*):/g, (token, requestedName) => {
+    const normalizedName = requestedName.toLowerCase();
+    const fallback = INFO_EMOJI_FALLBACKS[normalizedName];
+    if (!fallback) return token;
+
+    const customEmoji = guild?.emojis?.cache?.find(
+      (emoji) => emoji.name?.toLowerCase() === normalizedName,
+    );
+    return customEmoji?.toString() || fallback;
+  });
+}
+
 function bannerUrl(message, environment = process.env, uploadedBannerUrl = null) {
   return uploadedBannerUrl?.trim() || environment[message.bannerEnv]?.trim() || null;
 }
 
-function infoMessagePayload(message, environment = process.env, uploadedBannerUrl = null) {
+function infoMessagePayload(message, environment = process.env, uploadedBannerUrl = null, guild = null) {
   const url = bannerUrl(message, environment, uploadedBannerUrl);
-  const payload = { content: message.content };
+  const payload = { content: resolveInfoEmojis(message.content, guild) };
   if (url) {
     payload.embeds = [{ image: { url } }];
   }
@@ -96,4 +119,11 @@ function missingBannerEnvironmentKeys(environment = process.env) {
     .filter((key) => !environment[key]?.trim());
 }
 
-module.exports = { INFO_MESSAGES, bannerUrl, infoMessagePayload, missingBannerEnvironmentKeys };
+module.exports = {
+  INFO_MESSAGES,
+  INFO_EMOJI_FALLBACKS,
+  bannerUrl,
+  infoMessagePayload,
+  missingBannerEnvironmentKeys,
+  resolveInfoEmojis,
+};

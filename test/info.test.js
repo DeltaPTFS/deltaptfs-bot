@@ -1,13 +1,26 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('../src/info');
+const {
+  INFO_MESSAGES,
+  infoMessagePayload,
+  missingBannerEnvironmentKeys,
+  resolveInfoEmojis,
+} = require('../src/info');
 
 test('info sequence combines every section with its labeled banner URL variable', () => {
   assert.equal(INFO_MESSAGES.length, 6);
   assert.ok(INFO_MESSAGES.every(({ content, banner, bannerEnv }) => content && banner && bannerEnv));
   assert.ok(INFO_MESSAGES.every(({ content }) => !content?.includes('MESSAGE DIVIDER')));
   assert.ok(INFO_MESSAGES.filter(({ content }) => content).every(({ content }) => content.length <= 2000));
+  assert.deepEqual(INFO_MESSAGES.map(({ content }) => content.split('\n')[0]), [
+    '# :information: Welcome to Delta Air Lines',
+    '# :rules: Community Rules',
+    '# :roles: Notification Roles',
+    '# :events: Community Events',
+    '# :support: Flight Operations',
+    '# :feedback: Need Assistance?',
+  ]);
   assert.deepEqual(INFO_MESSAGES.map(({ banner }) => banner), [
     'welcome',
     'community-rules',
@@ -33,10 +46,27 @@ test('info payload places each banner inside the same Discord message as an embe
 
   for (const message of INFO_MESSAGES) {
     const payload = infoMessagePayload(message, environment);
-    assert.equal(payload.content, message.content);
+    assert.ok(!/:(information|rules|roles|events|support|feedback|skyteamlogo):/.test(payload.content));
     assert.deepEqual(payload.embeds, [{ image: { url: `https://cdn.example.com/${message.banner}.png` } }]);
     assert.equal(payload.files, undefined);
   }
+});
+
+test('info aliases resolve to server emoji IDs and have Unicode fallbacks', () => {
+  const guild = {
+    emojis: {
+      cache: [
+        { name: 'support', toString: () => '<:support:123456789012345678>' },
+        { name: 'skyteamlogo', toString: () => '<:skyteamlogo:987654321098765432>' },
+      ],
+    },
+  };
+
+  assert.equal(
+    resolveInfoEmojis(':support: Flight Operations :skyteamlogo:', guild),
+    '<:support:123456789012345678> Flight Operations <:skyteamlogo:987654321098765432>',
+  );
+  assert.equal(resolveInfoEmojis(':rules: Rules :feedback:'), '📜 Rules 🛟');
 });
 
 test('an uploaded banner takes priority over its configured banner URL', () => {
