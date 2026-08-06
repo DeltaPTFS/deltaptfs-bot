@@ -84,6 +84,12 @@ const infoCommand = new SlashCommandBuilder()
   .setDescription('Post the complete Delta welcome and information sequence')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
+for (const message of INFO_MESSAGES) {
+  infoCommand.addAttachmentOption((option) => option
+    .setName(message.banner)
+    .setDescription(`Upload the ${message.banner.replaceAll('-', ' ')} banner shown with this section`));
+}
+
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
 }
@@ -477,10 +483,17 @@ async function handleInfo(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
   for (const message of INFO_MESSAGES) {
-    await interaction.channel.send(infoMessagePayload(message));
+    const uploadedBanner = interaction.options.getAttachment(message.banner);
+    await interaction.channel.send(infoMessagePayload(message, process.env, uploadedBanner?.url));
   }
 
-  const missingBanners = missingBannerEnvironmentKeys();
+  const uploadedBannerNames = new Set(
+    INFO_MESSAGES
+      .filter((message) => interaction.options.getAttachment(message.banner))
+      .map((message) => message.bannerEnv),
+  );
+  const missingBanners = missingBannerEnvironmentKeys()
+    .filter((key) => !uploadedBannerNames.has(key));
   const bannerNote = missingBanners.length
     ? ` Missing banner URL variables: ${missingBanners.join(', ')}.`
     : '';

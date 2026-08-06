@@ -181,7 +181,9 @@ npm start
 
 Members with **Manage Server** can run `/info` in the destination channel. The bot posts six standalone public messages without replying to another public message. Each message contains its title, body, and matching banner in the same Discord message. The Flight Operations message uses the Flight Operations banner, while the Assistance message uses the SkyTeam banner. Divider instructions are never posted.
 
-To keep PRs compatible with GitHub's web editor and conflict resolver, banner image files are not committed to the repository. Upload the banners somewhere Discord can display them, such as a private Discord channel/CDN link or your hosting provider's static files, then set these environment variables before running `/info`:
+The command has six optional attachment fields named **welcome**, **community-rules**, **notifications**, **events**, **flight-operations**, and **skyteam**. Upload the supplied image in its matching field when running `/info`; the bot places it beneath that section's text. A command upload takes priority over a configured banner URL.
+
+For repeat use without selecting the files each time, upload the banners somewhere Discord can display them, such as a private Discord channel/CDN link or your hosting provider's static files, then set these environment variables. To keep PRs compatible with GitHub's web editor and conflict resolver, banner image files are not committed to the repository:
 
 ```env
 INFO_WELCOME_BANNER_URL=https://example.com/welcome.png
@@ -192,7 +194,7 @@ INFO_FLIGHT_OPERATIONS_BANNER_URL=https://example.com/flight-operations.png
 INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
 ```
 
-If a banner URL is missing, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
+If neither a command upload nor a banner URL is available, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
 
 The `/setup` command has separate `mode` and `section` choices. Choose **Roles only**, **Categories and channels only**, or **Roles and categories/channels** in either preview or apply mode. Existing unbranded member roles are renamed to `[Role Name] | Delta PTFS`; separator roles such as `━━ LEADERSHIP ━━` retain their separator names.
 

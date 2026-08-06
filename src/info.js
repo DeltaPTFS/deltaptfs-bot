@@ -77,12 +77,12 @@ Thank you for choosing **Delta Air Lines**.
   },
 ];
 
-function bannerUrl(message, environment = process.env) {
-  return environment[message.bannerEnv]?.trim() || null;
+function bannerUrl(message, environment = process.env, uploadedBannerUrl = null) {
+  return uploadedBannerUrl?.trim() || environment[message.bannerEnv]?.trim() || null;
 }
 
-function infoMessagePayload(message, environment = process.env) {
-  const url = bannerUrl(message, environment);
+function infoMessagePayload(message, environment = process.env, uploadedBannerUrl = null) {
+  const url = bannerUrl(message, environment, uploadedBannerUrl);
   const payload = { content: message.content };
   if (url) {
     payload.embeds = [{ image: { url } }];

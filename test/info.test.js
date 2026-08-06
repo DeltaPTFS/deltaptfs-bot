@@ -39,6 +39,19 @@ test('info payload places each banner inside the same Discord message as an embe
   }
 });
 
+test('an uploaded banner takes priority over its configured banner URL', () => {
+  const message = INFO_MESSAGES[0];
+  const payload = infoMessagePayload(
+    message,
+    { [message.bannerEnv]: 'https://cdn.example.com/configured.png' },
+    'https://cdn.discordapp.com/attachments/uploaded.png',
+  );
+
+  assert.deepEqual(payload.embeds, [{
+    image: { url: 'https://cdn.discordapp.com/attachments/uploaded.png' },
+  }]);
+});
+
 test('info command posts standalone channel messages', () => {
   const entrypoint = fs.readFileSync('src/index.js', 'utf8');
   const handler = entrypoint.slice(
@@ -47,6 +60,7 @@ test('info command posts standalone channel messages', () => {
   );
   assert.match(handler, /interaction\.channel\.send/);
   assert.match(handler, /infoMessagePayload/);
+  assert.match(handler, /interaction\.options\.getAttachment/);
   assert.doesNotMatch(handler, /interaction\.followUp/);
   assert.doesNotMatch(handler, /AttachmentBuilder/);
 });
