@@ -1,11 +1,11 @@
 {
   "name": "delta-air-lines-ptfs-bot",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Discord server setup bot for Delta Airlines",
   "main": "src/index.js",
   "scripts": {
-    "build": "node --check src/index.js && node --check src/health.js && node --check src/info.js && node --check src/layout.js && node --check src/roles.js && node --check src/sheets.js && node --check src/roblox-roles.js && node --check src/role-update.js",
+    "build": "node --check src/index.js && node --check src/health.js && node --check src/info.js && node --check src/layout.js && node --check src/roles.js && node --check src/sheets.js && node --check src/config.js && node --check src/database.js && node --check src/roblox-service.js && node --check src/role-sync.js && node --check src/role-update.js && node --check src/verification-service.js",
     "start": "node src/index.js",
     "test": "node --test"
   },
@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "discord.js": "^14.21.0",
-    "dotenv": "^17.2.0"
+    "dotenv": "^17.2.0",
+    "pg": "^8.16.3"
   }
 }

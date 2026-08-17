@@ -125,26 +125,25 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v2.3.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.0.0** before applying the layout.
 
 ## Hosting configuration
 
 - **Build Command:** `npm install && npm run build`
 - **Start Command:** `npm start`
-- **Environment variable:** `DISCORD_TOKEN` (set this to the token from the Discord Developer Portal; never commit it)
-- **Optional Sheets variables:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
-- **Optional info banner variables:** `INFO_WELCOME_BANNER_URL`, `INFO_RULES_BANNER_URL`, `INFO_NOTIFICATIONS_BANNER_URL`, `INFO_EVENTS_BANNER_URL`, `INFO_FLIGHT_OPERATIONS_BANNER_URL`, and `INFO_ASSISTANCE_BANNER_URL`
-- **Roblox role-sync variable:** `ROBLOX_COMMUNITY_ID` (the numeric ID for the [Delta Roblox Community](https://www.roblox.com/share/g/650682730))
-- **Port:** use the host-provided `PORT` value; locally it defaults to `3000`
 - **Runtime:** Node.js 20 or later
+- **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `GUILD_ID`, `EXECUTIVE_ROLE_ID`, `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
+- **Role sync:** `ROLE_MAPPINGS` is a JSON object mapping each Roblox group-role ID to one Discord role ID or an array of IDs; `MANAGED_ROLE_IDS` is a JSON array of every Discord role verification may remove.
+- **Optional logging:** `LOG_CHANNEL_ID`
+- **In-game lookup security:** `VERIFICATION_API_KEY`
+- **Optional Sheets:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
+- **Optional banners:** the six `INFO_*_BANNER_URL` variables shown in `.env.example`
 
-The bot starts a small HTTP health server immediately so web-service hosts can detect its port while Discord connects. `GET /` returns deployment status with HTTP 200, and `GET /health` returns HTTP 200 only after Discord is ready. Configure the hosting health-check path as `/health`. Do not hard-code a production port—the bot automatically reads the platform's `PORT` environment variable.
+Create a Render PostgreSQL database and use its internal connection string for `DATABASE_URL`. On startup the bot creates `verifications`, expiring `verification_sessions`, and `role_update_logs`. Discord and Roblox IDs use PostgreSQL `BIGINT`; Roblox usernames are retained only as current display metadata. Unique constraints prevent one Roblox account from being linked to multiple Discord accounts.
 
-If your host supports background workers, that service type also works and does not require a port. On hosts that report **“No open ports detected,”** deploy this repository as a web service with the commands above; the included health server satisfies the port requirement.
+Create a Roblox OAuth 2.0 application with the `openid` and `profile` scopes. Its redirect URI must exactly equal `ROBLOX_OAUTH_REDIRECT_URI`, normally `https://your-render-service.onrender.com/auth/roblox/callback`. The authorization-code flow uses a cryptographically random, single-use state and PKCE S256. Secrets belong only in the hosting environment, never in source or Roblox Studio.
 
-When inviting the bot, include the `bot` and `applications.commands` scopes. The bot needs **Manage Channels** and **Manage Roles** permissions to apply the layout.
-
-If Discord returns code `50013`, setup now reports the exact role, category, channel, or permission update that Discord denied. A `50013` during role ordering or assignment is treated as a warning so channel creation can continue. Discord's Administrator permission does not bypass role hierarchy: the bot's managed role must still be above every role it needs to create, assign, or reorder.
+The bot starts its HTTP server immediately. `GET /` reports startup state and `GET /health` becomes HTTP 200 after Discord command registration. Configure Render's health path as `/health`. Enable Discord's privileged **Server Members Intent**, and place the bot role above Verified, Unverified, and every mapped/managed role.
 
 ## Use
 
@@ -187,14 +186,28 @@ INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
 
 If neither a command upload nor a banner URL is available, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
 
-## Managed Discord role updates and Roblox synchronization
+## Discord ↔ Roblox verification and role management
 
-Members whose highest Discord role is at or above the `━━ EXECUTIVES ━━` role (ID `1533718284615291042`) can add a managed role with `/update user:@Member role:@Role`. Authorization uses Discord role positions rather than checking only for the exact Executives role. The requested role must be below both the caller's highest role and the bot's highest role. The command rejects the server owner, `@everyone`, integration-managed roles, and roles the target already holds. It only adds the selected role and never removes unrelated roles.
+### `/verify roblox-username:Name`
 
-Members can continue using `/getrole` to synchronize their own Roblox Community rank. Roblox rank names must match Discord role names—for example, Roblox rank `Captain` maps to `Captain | Delta Air Lines`. Configure the Community with `ROBLOX_COMMUNITY_ID` as described above.
+The bot resolves the supplied username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. The PostgreSQL record stores Discord ID, Roblox ID, current username, verification time, and last-update time. A successful callback grants Verified, removes Unverified, attempts configured group-role synchronization, and privately confirms the result to the member.
 
-The bot needs **Manage Roles**, and its role must be above every role it may assign. Discord's hierarchy applies even when the bot has broad server permissions.
+### `/getrole`
+
+Only a Discord account with a stored verification may synchronize. The bot retrieves the saved Roblox user ID, refreshes the current username, reads current group membership, maps the Roblox group-role ID through `ROLE_MAPPINGS`, adds missing mapped roles, and removes obsolete roles only from `MANAGED_ROLE_IDS`. All unrelated Discord roles remain untouched.
+
+### `/update user:@Member role:@Role`
+
+The minimum threshold is the configured Executives role (default ID `1533718284615291042`). Authorization compares positions, so any highest role at or above Executives qualifies. Validation rejects the wrong guild, `@everyone`, managed integration roles, roles equal to or above the caller, roles equal to or above the bot, and roles already held. It adds only the selected role. Every success is written to `role_update_logs`, printed to the service log, and—when `LOG_CHANNEL_ID` is configured—posted as an embed.
+
+### `/unlink user:@Member`
+
+Executives and higher may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and Verified, grants Unverified, deletes the database record so both accounts may verify again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
+
+### Roblox server-side lookup API
+
+Roblox server scripts may call `GET /api/verification/{roblox_user_id}` with `x-api-key: <VERIFICATION_API_KEY>` from server-side `HttpService`. The endpoint returns only verification state and the linked IDs. Missing or incorrect credentials receive HTTP 401. Never place the Discord token, database URL, OAuth client secret, or other private credentials in Roblox Studio; only the dedicated lookup API key should be used, and only from server scripts.
 
 ### Verification visibility
 
-New members automatically receive `Unverified | Delta Air Lines`. That role can see only `#information`, `#verify`, and `#verification-help`. It cannot see the remaining Information Center channels or any other server category. A successful Roblox Community role sync grants `Verified | Delta Air Lines`, removes Unverified, and applies the matching Community rank. The bot requires the privileged **Server Members Intent** in the Discord Developer Portal so it can assign Unverified when a member joins.
+New members automatically receive `Unverified | Delta Air Lines`. That role can see only `#information`, `#verify`, and `#verification-help`. Verified members have Unverified removed. Discord administrators inherently bypass channel permission overwrites.

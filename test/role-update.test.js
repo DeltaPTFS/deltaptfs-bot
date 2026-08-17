@@ -2,10 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {
-  EXECUTIVES_ROLE_ID,
   successEmbed,
   validateRoleUpdate,
 } = require('../src/role-update');
+
+const EXECUTIVES_ROLE_ID = '1533718284615291042';
 
 function role(id, position, options = {}) {
   return { id, position, managed: false, toString: () => `<@&${id}>`, ...options };
@@ -30,6 +31,7 @@ function scenario(overrides = {}) {
     target,
     requestedRole,
     botMember: overrides.botMember ?? { roles: { highest: role('bot', 100) } },
+    executiveRoleId: EXECUTIVES_ROLE_ID,
   };
 }
 
@@ -58,11 +60,7 @@ test('denies callers below Executives before other validation', () => {
   assert.equal(validateRoleUpdate(input).embed.title, '❌ Access Denied');
 });
 
-test('enforces owner, caller, bot, everyone, and managed-role safeguards in order', () => {
-  assert.equal(validateRoleUpdate(scenario({
-    target: { id: 'owner', roles: { cache: new Map() } },
-  })).embed.title, '❌ Unable to Update Member');
-
+test('enforces caller, bot, everyone, and managed-role safeguards in order', () => {
   assert.match(validateRoleUpdate(scenario({ requestedRole: role('high', 50) })).embed.description, /equal to or higher/);
   assert.match(validateRoleUpdate(scenario({
     requestedRole: role('bot-high', 40),

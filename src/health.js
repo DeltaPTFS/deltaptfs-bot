@@ -5,7 +5,14 @@ function startHealthServer(options = {}) {
   const state = { discordReady: false, error: null };
 
   const server = http.createServer(async (request, response) => {
-    if (options.requestHandler && await options.requestHandler(request, response)) return;
+    try {
+      if (options.requestHandler && await options.requestHandler(request, response)) return;
+    } catch (error) {
+      console.error('HTTP request handler failed:', error);
+      response.writeHead(500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ error: 'Internal server error' }));
+      return;
+    }
     const isHealthCheck = request.url === '/health';
     const statusCode = isHealthCheck && !state.discordReady ? 503 : 200;
     response.writeHead(statusCode, { 'Content-Type': 'application/json' });
