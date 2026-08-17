@@ -14,9 +14,9 @@ test('info sequence combines every section with its labeled banner URL variable'
   assert.ok(INFO_MESSAGES.every(({ content, banner, bannerEnv }) => content && banner && bannerEnv));
   assert.ok(INFO_MESSAGES.every(({ content }) => !content?.includes('MESSAGE DIVIDER')));
   assert.ok(INFO_MESSAGES.filter(({ content }) => content).every(({ content }) => content.length <= 2000));
-  assert.ok(INFO_MESSAGES.every(({ content }) => !/Delta Air Lines(?! PTFS)/.test(content)));
+  assert.ok(INFO_MESSAGES.every(({ content }) => !/Delta Air Lines|Delta PTFS/.test(content)));
   assert.deepEqual(INFO_MESSAGES.map(({ content }) => content.split('\n')[0]), [
-    '# :information: Welcome to Delta Air Lines PTFS',
+    '# :information: Welcome to Delta Airlines',
     '# :rules: Community Rules',
     '# :roles: Notification Roles',
     '# :events: Community Events',
@@ -87,7 +87,7 @@ test('an uploaded banner takes priority over its configured banner URL', () => {
 
   assert.deepEqual(payload.embeds[0], {
     color: DELTA_BLUE,
-    title: 'ℹ️ Welcome to Delta Air Lines PTFS',
+    title: 'ℹ️ Welcome to Delta Airlines',
     description: payload.embeds[0].description,
     image: { url: 'https://cdn.discordapp.com/attachments/uploaded.png' },
   });
@@ -98,7 +98,7 @@ test('info payload still posts a formatted content embed when no banner is suppl
 
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].color, DELTA_BLUE);
-  assert.equal(payload.embeds[0].title, 'ℹ️ Welcome to Delta Air Lines PTFS');
+  assert.equal(payload.embeds[0].title, 'ℹ️ Welcome to Delta Airlines');
   assert.equal(payload.embeds[0].image, undefined);
 });
 

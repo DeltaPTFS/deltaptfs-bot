@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { ATC_FREQUENCY_GROUPS, SERVER_LAYOUT, formatLayout } = require('../src/layout');
+const { SERVER_LAYOUT, formatLayout } = require('../src/layout');
 const { ROLE_GROUPS, formatRoles, roleDefinitions } = require('../src/roles');
 
 test('layout category and channel names are unique', () => {
@@ -21,31 +21,30 @@ test('formatted preview includes private label and all channels', () => {
   assert.equal(preview.split('\n').filter((line) => line.startsWith('  ')).length, channelCount);
 });
 
-test('complete ATC frequency network is last, valid, and listen-only', () => {
-  const frequencyCategories = SERVER_LAYOUT.filter(({ bottom }) => bottom);
-  assert.deepEqual(frequencyCategories, SERVER_LAYOUT.slice(-ATC_FREQUENCY_GROUPS.length));
-  assert.equal(frequencyCategories.length, 18);
-  const channels = frequencyCategories.flatMap(({ channels }) => channels);
-  assert.equal(channels.length, 65);
-  assert.ok(frequencyCategories.every(({ channels: entries }) => entries.length <= 4));
-  assert.ok(channels.every(({ name, type, flightDeckOnly }) =>
-    /^🔊 (?:[A-Z]{2,4}_(?:DEL|GND|TWR|APP)|UNICOM) \[\d{3}\.\d{3}\]$/.test(name)
-      && type === 'voice' && flightDeckOnly));
-  assert.ok(channels.some(({ name }) => name === '🔊 IRFD_TWR [118.100]'));
-  assert.ok(channels.some(({ name }) => name === '🔊 UNICOM [122.800]'));
-  for (const [airport] of ATC_FREQUENCY_GROUPS) {
-    const expectedName = airport === 'UNICOM' ? 'UNICOM FREQUENCY' : `${airport} FREQUENCIES`;
-    assert.ok(frequencyCategories.some(({ name }) => name === expectedName));
-  }
+test('onboarding layout removes frequencies and limits unverified visibility', () => {
+  assert.equal(SERVER_LAYOUT[0].name, 'INFORMATION CENTER');
+  assert.equal(SERVER_LAYOUT[1].name, 'VERIFICATION');
+  assert.deepEqual(SERVER_LAYOUT[0].channels.map(({ name }) => name), [
+    'information', 'rules', 'announcements', 'help-desk',
+  ]);
+  assert.deepEqual(SERVER_LAYOUT[1].channels.map(({ name }) => name), [
+    'verify', 'verification-help',
+  ]);
+  assert.ok(SERVER_LAYOUT[0].channels.find(({ name }) => name === 'information').visibleToUnverified);
+  assert.ok(SERVER_LAYOUT[1].channels.every(({ visibleToUnverified }) => visibleToUnverified));
+  assert.ok(SERVER_LAYOUT.slice(2).every(({ hideFromUnverified }) => hideFromUnverified));
+  assert.ok(!SERVER_LAYOUT.some(({ name }) => /FREQUENC|AIR TRAFFIC CONTROL/.test(name)));
+  assert.ok(!SERVER_LAYOUT.flatMap(({ channels }) => channels).some(({ name }) =>
+    ['roles', 'faq', 'ATC Tower'].includes(name) || /\[\d{3}\.\d{3}\]/.test(name)));
 });
 
 test('role hierarchy has unique names and required department roles', () => {
   const roles = roleDefinitions().filter(({ baseName }) => baseName);
   const names = roles.map(({ name }) => name.toLowerCase());
   assert.equal(new Set(names).size, names.length);
-  assert.ok(names.includes('senior administration | delta ptfs'));
-  assert.ok(names.includes('skymiles member | delta ptfs'));
-  assert.ok(names.includes('captain | delta ptfs'));
+  assert.ok(names.includes('senior administration | delta air lines'));
+  assert.ok(names.includes('skymiles member | delta air lines'));
+  assert.ok(names.includes('captain | delta air lines'));
   assert.match(formatRoles(), /@━━ FLIGHT OPERATIONS ━━/);
   assert.match(formatRoles(), /@Lead of ATC Department/);
 });
@@ -61,7 +60,7 @@ test('role category separators appear below their member roles', () => {
   const definitions = roleDefinitions();
   for (const group of ROLE_GROUPS) {
     const preview = formatRoles();
-    const lastMember = `@${group.roles.at(-1).name} | Delta PTFS`;
+    const lastMember = `@${group.roles.at(-1).name} | Delta Air Lines`;
     const separator = `@${group.categoryRole.name}`;
     assert.ok(preview.indexOf(lastMember) < preview.indexOf(separator));
     assert.ok(
@@ -80,9 +79,9 @@ test('SkyMiles roles follow the real Medallion tier order', () => {
   );
 });
 
-test('member roles use Delta PTFS suffix while category separators do not', () => {
+test('member roles use Delta Air Lines suffix while category separators do not', () => {
   for (const definition of roleDefinitions()) {
-    if (definition.baseName) assert.equal(definition.name, `${definition.baseName} | Delta PTFS`);
+    if (definition.baseName) assert.equal(definition.name, `${definition.baseName} | Delta Air Lines`);
     else assert.match(definition.name, /^━━ .+ ━━$/);
   }
 });

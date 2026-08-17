@@ -1,8 +1,8 @@
 const INFO_MESSAGES = [
   {
-    content: `# :information: Welcome to Delta Air Lines PTFS
+    content: `# :information: Welcome to Delta Airlines
 
-Welcome aboard **Delta Air Lines PTFS**, a growing PTFS virtual airline focused on professionalism, teamwork, realism, and an enjoyable experience for every member. Whether you join us as a passenger, crew member, future applicant, or aviation enthusiast, we are excited to have you become part of our community.
+Welcome aboard **Delta Airlines**, a growing PTFS virtual airline focused on professionalism, teamwork, realism, and an enjoyable experience for every member. Whether you join us as a passenger, crew member, future applicant, or aviation enthusiast, we are excited to have you become part of our community.
 
 Our server offers realistic flight operations, organized community events, structured training, career opportunities, and continued development. Please review the information below before participating so you understand how our community operates.
 
@@ -37,7 +37,7 @@ You may add or remove your notification roles at any time by reacting or removin
   {
     content: `# :events: Community Events
 
-Delta Air Lines PTFS regularly hosts scheduled flights, training sessions, community activities, giveaways, celebrations, and other special events.
+Delta Airlines regularly hosts scheduled flights, training sessions, community activities, giveaways, celebrations, and other special events.
 
 Event details will include the date, start time, participation requirements, and any available positions. Members should read each event announcement carefully and arrive on time when they confirm attendance.
 
@@ -69,9 +69,9 @@ Our HelpDesk is available for application questions, department assistance, repo
 
 When requesting help, clearly explain the issue and provide any relevant screenshots or information. Please allow the staff team enough time to review your request and avoid repeatedly pinging or messaging multiple staff members about the same matter.
 
-Thank you for choosing **Delta Air Lines PTFS**.
+Thank you for choosing **Delta Airlines**.
 
--# :skyteamlogo: **Keep Climbing, Delta Air Lines PTFS.**`,
+-# :skyteamlogo: **Keep Climbing, Delta Airlines.**`,
     banner: 'skyteam',
     bannerEnv: 'INFO_ASSISTANCE_BANNER_URL',
   },

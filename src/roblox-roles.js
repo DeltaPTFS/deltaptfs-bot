@@ -1,7 +1,7 @@
 const ROBLOX_COMMUNITY_URL = 'https://www.roblox.com/share/g/650682730';
 
 function normalizedRoleName(name) {
-  return name.toLowerCase().replace(/\s*\|\s*delta ptfs$/i, '').trim();
+  return name.toLowerCase().replace(/\s*\|\s*delta (?:ptfs|airlines|air lines)$/i, '').trim();
 }
 
 function createRobloxRoleSync({ environment = process.env, fetchImpl = global.fetch } = {}) {
@@ -60,6 +60,14 @@ function createRobloxRoleSync({ environment = process.env, fetchImpl = global.fe
     if (obsolete.size) await member.roles.remove(obsolete, 'Synchronize Delta Roblox Community rank');
     if (!member.roles.cache.has(desiredRole.id)) {
       await member.roles.add(desiredRole, 'Synchronize Delta Roblox Community rank');
+    }
+    const verifiedRole = guildRoles.find((role) => normalizedRoleName(role.name) === 'verified');
+    const unverifiedRole = guildRoles.find((role) => normalizedRoleName(role.name) === 'unverified');
+    if (verifiedRole?.editable && !member.roles.cache.has(verifiedRole.id)) {
+      await member.roles.add(verifiedRole, 'Verified through Delta Roblox Community rank sync');
+    }
+    if (unverifiedRole?.editable && member.roles.cache.has(unverifiedRole.id)) {
+      await member.roles.remove(unverifiedRole, 'Completed Delta Roblox Community rank sync');
     }
     if (member.displayName !== user.name && member.manageable) {
       await member.setNickname(user.name, 'Record Leadership-approved Roblox username');

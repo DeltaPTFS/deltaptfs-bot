@@ -10,7 +10,6 @@ const {
 } = require('discord.js');
 const { SERVER_LAYOUT, formatLayout } = require('./layout');
 const { ROLE_GROUPS, formatRoles, roleDefinitions } = require('./roles');
-const { atcRolePolicies } = require('./permissions');
 const {
   awardMiles,
   getBalance,
@@ -29,13 +28,13 @@ if (!token) {
   process.exit(1);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 const robloxRoles = createRobloxRoleSync();
 const health = startHealthServer();
 
 const setupCommand = new SlashCommandBuilder()
   .setName('setup')
-  .setDescription('Preview or apply Delta PTFS roles, channels, or both')
+  .setDescription('Preview or apply Delta Airlines roles, channels, or both')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((option) =>
     option
@@ -124,12 +123,23 @@ function splitMessage(content, limit = 1900) {
 }
 
 function categoryOverwrites(guild, categoryDefinition, rolesByName) {
-  if (!categoryDefinition.accessRoles) return [];
+  const unverified = configuredRole(rolesByName, 'Unverified');
+  if (!categoryDefinition.accessRoles) {
+    if (categoryDefinition.hideFromUnverified && unverified) {
+      return [{ id: unverified.id, deny: [PermissionFlagsBits.ViewChannel] }];
+    }
+    if (categoryDefinition.visibleToUnverified && unverified) {
+      return [{ id: unverified.id, allow: [PermissionFlagsBits.ViewChannel] }];
+    }
+    return [];
+  }
 
   return [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     ...categoryDefinition.accessRoles.flatMap((name) => {
       const role = rolesByName.get(name.toLowerCase())
+        ?? rolesByName.get(`${name} | delta air lines`.toLowerCase())
+        ?? rolesByName.get(`${name} | delta airlines`.toLowerCase())
         ?? rolesByName.get(`${name} | delta ptfs`.toLowerCase());
       return role ? [{
       id: role.id,
@@ -139,69 +149,41 @@ function categoryOverwrites(guild, categoryDefinition, rolesByName) {
   ];
 }
 
-const ATC_MEDIA_DENIES = [
-  PermissionFlagsBits.Stream,
-  PermissionFlagsBits.UseSoundboard,
-  PermissionFlagsBits.UseExternalSounds,
-  PermissionFlagsBits.UseEmbeddedActivities,
-];
-
 function configuredRole(rolesByName, name) {
-  return rolesByName.get(`${name} | delta ptfs`.toLowerCase())
+  return rolesByName.get(`${name} | delta air lines`.toLowerCase())
+    ?? rolesByName.get(`${name} | delta airlines`.toLowerCase())
+    ?? rolesByName.get(`${name} | delta ptfs`.toLowerCase())
     ?? rolesByName.get(name.toLowerCase());
 }
 
 function channelOverwrites(guild, channelDefinition, rolesByName) {
-  if (!channelDefinition.flightDeckOnly) return undefined;
-
-  const listenerDenies = [
-    PermissionFlagsBits.Speak,
-    PermissionFlagsBits.PrioritySpeaker,
-    PermissionFlagsBits.SendMessages,
-    PermissionFlagsBits.SendMessagesInThreads,
-    PermissionFlagsBits.CreatePublicThreads,
-    PermissionFlagsBits.CreatePrivateThreads,
-    PermissionFlagsBits.AddReactions,
-    PermissionFlagsBits.UseApplicationCommands,
-    ...ATC_MEDIA_DENIES,
-  ];
-  const overwrites = [{
-    id: guild.roles.everyone.id,
-    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
-    deny: listenerDenies,
+  const unverified = configuredRole(rolesByName, 'Unverified');
+  if (!unverified) return undefined;
+  return [{
+    id: unverified.id,
+    ...(channelDefinition.visibleToUnverified
+      ? { allow: [PermissionFlagsBits.ViewChannel] }
+      : { deny: [PermissionFlagsBits.ViewChannel] }),
   }];
-
-  for (const policy of atcRolePolicies()) {
-    const role = configuredRole(rolesByName, policy.name);
-    if (!role) continue;
-    overwrites.push({
-      id: role.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.Connect,
-        ...(policy.canSpeak ? [PermissionFlagsBits.Speak, PermissionFlagsBits.UseVAD] : []),
-        ...(policy.prioritySpeaker ? [PermissionFlagsBits.PrioritySpeaker] : []),
-      ],
-      deny: [
-        ...ATC_MEDIA_DENIES,
-        ...(!policy.canSpeak ? [PermissionFlagsBits.Speak, PermissionFlagsBits.PrioritySpeaker] : []),
-      ],
-    });
-  }
-  return overwrites;
 }
 
 async function findOrCreateCategory(guild, categoryDefinition, rolesByName) {
-  const existing = guild.channels.cache.find(
+  let existing = guild.channels.cache.find(
     (channel) => channel.type === ChannelType.GuildCategory
       && channel.name.toLowerCase() === categoryDefinition.name.toLowerCase(),
   );
+  if (!existing && categoryDefinition.legacyNames) {
+    existing = guild.channels.cache.find((channel) => channel.type === ChannelType.GuildCategory
+      && categoryDefinition.legacyNames.some((name) => channel.name.toLowerCase() === name.toLowerCase()));
+    if (existing) await existing.setName(categoryDefinition.name, 'Rename Delta Airlines category');
+  }
   const permissionOverwrites = categoryOverwrites(guild, categoryDefinition, rolesByName);
   if (existing) {
-    if (categoryDefinition.accessRoles) {
+    if (categoryDefinition.accessRoles || categoryDefinition.hideFromUnverified
+      || categoryDefinition.visibleToUnverified) {
       await existing.permissionOverwrites.set(
         permissionOverwrites,
-        'Synchronize Delta Air Lines PTFS category access',
+        'Synchronize Delta Airlines category access',
       );
     }
     return { category: existing, created: false };
@@ -211,7 +193,7 @@ async function findOrCreateCategory(guild, categoryDefinition, rolesByName) {
     name: categoryDefinition.name,
     type: ChannelType.GuildCategory,
     permissionOverwrites,
-    reason: 'Delta Air Lines PTFS server setup',
+    reason: 'Delta Airlines server setup',
   });
   return { category, created: true };
 }
@@ -224,27 +206,25 @@ async function applyRoles(guild) {
   let skipped = 0;
   const warnings = [];
 
-  // v2.1 replaces the former OAuth verification system with Roblox Community
-  // rank synchronization, so its obsolete role should not remain in servers.
-  const legacyVerifiedRole = guild.roles.cache.find((role) =>
-    ['verified', 'verified | delta ptfs'].includes(role.name.toLowerCase()));
-  if (legacyVerifiedRole?.editable) {
-    await legacyVerifiedRole.delete('Remove retired Roblox verification role');
-  }
-
   // New roles start near the bottom and push earlier roles upward, so creating
   // the hierarchy from highest to lowest preserves its intended order.
   for (const definition of definitions) {
     let existing = guild.roles.cache.find(
       (role) => role.name.toLowerCase() === definition.name.toLowerCase(),
     );
-    const legacyRole = definition.baseName && guild.roles.cache.find(
-      (role) => role.name.toLowerCase() === definition.baseName.toLowerCase(),
-    );
+    const legacyNames = definition.baseName
+      ? [
+        definition.baseName,
+        `${definition.baseName} | Delta Airlines`,
+        `${definition.baseName} | Delta PTFS`,
+      ]
+      : [];
+    const legacyRole = guild.roles.cache.find((role) =>
+      legacyNames.some((name) => role.name.toLowerCase() === name.toLowerCase()));
     if (!existing && legacyRole?.editable) {
       existing = await legacyRole.edit({
         name: definition.name,
-        reason: 'Apply Delta PTFS role naming format',
+        reason: 'Apply Delta Air Lines role naming format',
       });
     }
     if (existing) {
@@ -258,7 +238,7 @@ async function applyRoles(guild) {
         color: definition.color,
         hoist: definition.hoist ?? false,
         permissions: (definition.permissions ?? []).map((name) => PermissionFlagsBits[name]),
-        reason: 'Delta Air Lines PTFS server setup',
+        reason: 'Delta Airlines server setup',
       });
     } catch (error) {
       error.setupStep = `creating role ${definition.name}`;
@@ -283,7 +263,7 @@ async function applyRoles(guild) {
         role: role.id,
         position: manageableRoles.length - index,
       })),
-      'Order Delta Air Lines PTFS roles and category separators',
+      'Order Delta Air Lines roles and category separators',
     );
   } catch (error) {
     if (error.code !== 50013) throw error;
@@ -340,11 +320,12 @@ async function applyChannels(guild) {
   const warnings = [];
   const requiredRoleNames = new Set([
     ...SERVER_LAYOUT.flatMap(({ accessRoles = [] }) => accessRoles),
-    ...atcRolePolicies().map(({ name }) => name),
+    'Unverified',
   ]);
   const missingRoles = [...requiredRoleNames].filter((name) =>
     !rolesByName.has(name.toLowerCase())
-    && !rolesByName.has(`${name} | delta ptfs`.toLowerCase()));
+    && !rolesByName.has(`${name} | delta air lines`.toLowerCase())
+    && !rolesByName.has(`${name} | delta airlines`.toLowerCase()));
   if (missingRoles.length) {
     warnings.push(
       `These access roles do not exist, so their channel overrides were skipped: ${missingRoles.join(', ')}. `
@@ -365,11 +346,28 @@ async function applyChannels(guild) {
         ? ChannelType.GuildVoice
         : ChannelType.GuildText;
       const expectedName = normalizedName(channelDefinition.name);
-      const existing = guild.channels.cache.find(
+      let existing = guild.channels.cache.find(
         (channel) => channel.parentId === category.id
           && channel.type === type
           && normalizedName(channel.name) === expectedName,
       );
+      if (!existing && channelDefinition.legacyNames) {
+        existing = guild.channels.cache.find((channel) => channel.type === type
+          && channelDefinition.legacyNames.some((name) => normalizedName(channel.name) === normalizedName(name)));
+        if (existing) {
+          await existing.edit({
+            name: channelDefinition.name,
+            parent: category.id,
+            topic: type === ChannelType.GuildText ? channelDefinition.topic : undefined,
+            reason: 'Migrate Delta Airlines information channel',
+          });
+        }
+      }
+      if (!existing && channelDefinition.legacyCategory) {
+        existing = guild.channels.cache.find((channel) => channel.type === type
+          && normalizedName(channel.name) === expectedName);
+        if (existing) await existing.setParent(category.id, { lockPermissions: false });
+      }
       if (existing) {
         const permissionOverwrites = channelOverwrites(guild, channelDefinition, rolesByName);
         if (permissionOverwrites) {
@@ -377,7 +375,7 @@ async function applyChannels(guild) {
             `updating permissions for ${existing.name}`,
             () => existing.permissionOverwrites.set(
               permissionOverwrites,
-              'Synchronize listen-only ATC frequency permissions',
+              'Synchronize Delta Airlines verification visibility',
             ),
           );
         }
@@ -391,39 +389,39 @@ async function applyChannels(guild) {
           parent: category.id,
           topic: type === ChannelType.GuildText ? channelDefinition.topic : undefined,
           permissionOverwrites: channelOverwrites(guild, channelDefinition, rolesByName),
-          reason: 'Delta Air Lines PTFS server setup',
+          reason: 'Delta Airlines server setup',
         }));
       channelsCreated += 1;
     }
   }
 
-  // Migrate servers from the earlier two-category frequency layout after all
-  // replacement airport categories have been created successfully.
+  // Remove the retired frequency network and ATC category from older layouts.
   const legacyFrequencyCategories = guild.channels.cache.filter((channel) =>
     channel.type === ChannelType.GuildCategory
-    && ['atc frequencies 1', 'atc frequencies 2'].includes(channel.name.toLowerCase()));
+    && (channel.name.toLowerCase() === 'air traffic control'
+      || channel.name.toLowerCase().includes('frequenc')));
   for (const legacyCategory of legacyFrequencyCategories.values()) {
     const legacyChildren = guild.channels.cache.filter(
       (channel) => channel.parentId === legacyCategory.id,
     );
     for (const legacyChannel of legacyChildren.values()) {
-      await legacyChannel.delete('Migrate to individual airport frequency categories');
+      await legacyChannel.delete('Remove retired Delta Airlines frequency channel');
     }
-    await legacyCategory.delete('Migrate to individual airport frequency categories');
+    await legacyCategory.delete('Remove retired Delta Airlines frequency category');
   }
 
-  for (const categoryDefinition of SERVER_LAYOUT.filter(({ bottom }) => bottom)) {
-    const category = guild.channels.cache.find((channel) =>
-      channel.type === ChannelType.GuildCategory
-      && channel.name.toLowerCase() === categoryDefinition.name.toLowerCase());
-    try {
-      await category.setPosition(guild.channels.cache.size - 1, {
-        reason: 'Keep ATC frequency categories at the bottom',
-      });
-    } catch (error) {
-      if (error.code !== 50013) throw error;
-      warnings.push(`Could not move ${category.name} to the bottom (50013).`);
+  for (const retiredName of ['roles', 'faq', 'atc tower']) {
+    const retiredChannels = guild.channels.cache.filter((channel) =>
+      normalizedName(channel.name) === normalizedName(retiredName));
+    for (const channel of retiredChannels.values()) {
+      await channel.delete('Remove retired Delta Airlines channel');
     }
+  }
+
+  for (const [name, position] of [['INFORMATION CENTER', 0], ['VERIFICATION', 1]]) {
+    const category = guild.channels.cache.find((channel) =>
+      channel.type === ChannelType.GuildCategory && channel.name.toUpperCase() === name);
+    if (category) await category.setPosition(position, { reason: 'Order Delta Airlines onboarding categories' });
   }
 
   return {
@@ -433,6 +431,19 @@ async function applyChannels(guild) {
     warnings,
   };
 }
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  if (member.user.bot) return;
+  const unverified = member.guild.roles.cache.find((role) =>
+    ['unverified | delta air lines', 'unverified | delta airlines', 'unverified']
+      .includes(role.name.toLowerCase()));
+  if (!unverified?.editable) return;
+  try {
+    await member.roles.add(unverified, 'New Delta Airlines member awaiting verification');
+  } catch (error) {
+    console.error('Could not assign the Unverified role:', error);
+  }
+});
 
 client.once(Events.ClientReady, async (readyClient) => {
   health.markReady();
@@ -532,7 +543,8 @@ async function handleInfo(interaction) {
 function memberDivision(member) {
   for (const group of ROLE_GROUPS) {
     if (group.roles.some((definition) => member.roles.cache.some((role) =>
-      role.name.toLowerCase() === `${definition.name} | delta ptfs`.toLowerCase()
+      role.name.toLowerCase() === `${definition.name} | delta airlines`.toLowerCase()
+      || role.name.toLowerCase() === `${definition.name} | delta air lines`.toLowerCase()
       || role.name.toLowerCase() === definition.name.toLowerCase()))) return group.name;
   }
   return null;
@@ -598,7 +610,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.commandName === 'bot-version') {
     await interaction.reply({
-      content: `Delta Virtual Assistant **v${botVersion}** — full ATC frequency layout enabled.`,
+      content: `Delta Virtual Assistant **v${botVersion}** — Delta Airlines layout enabled.`,
       ephemeral: true,
     });
     return;

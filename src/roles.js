@@ -77,6 +77,8 @@ const ROLE_GROUPS = [
     name: 'Community',
     categoryRole: { name: '━━ COMMUNITY ━━', color: '#546E7A' },
     roles: [
+      { name: 'Verified', color: '#236192' },
+      { name: 'Unverified', color: '#64748B' },
       { name: 'Passenger', color: '#43A047' },
       { name: 'Aviation Enthusiast', color: '#78909C' },
       { name: 'Guest', color: '#90A4AE' },
@@ -96,7 +98,7 @@ function roleDefinitions() {
     ...group.roles.map((role) => ({
       ...role,
       baseName: role.name,
-      name: `${role.name} | Delta PTFS`,
+      name: `${role.name} | Delta Air Lines`,
     })),
     group.categoryRole,
   ]);
@@ -104,7 +106,7 @@ function roleDefinitions() {
 
 function formatRoles() {
   return ROLE_GROUPS.map((group) => [
-    ...group.roles.map((role) => `  @${role.name} | Delta PTFS`),
+    ...group.roles.map((role) => `  @${role.name} | Delta Air Lines`),
     `  @${group.categoryRole.name}`,
   ].join('\n')).join('\n\n');
 }
