@@ -12,6 +12,8 @@ const OPERATIONAL_ACCESS_ROLES = [
   'Lead of Flight Deck Department',
   'Lead of ATC Department',
   'Lead of Ground Operations Department',
+  'Lead of Marketing Department',
+  'Lead of External Affairs Department',
   'Operations Manager',
   'Department Manager',
   'Assistant Department Manager',

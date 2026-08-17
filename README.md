@@ -22,12 +22,21 @@ Running `/setup mode:Preview only section:Roles and categories/channels` shows t
   @Lead of Flight Deck Department | Delta Air Lines
   @Lead of ATC Department | Delta Air Lines
   @Lead of Ground Operations Department | Delta Air Lines
+  @Lead of Marketing Department | Delta Air Lines
+  @Lead of External Affairs Department | Delta Air Lines
   @━━ EXECUTIVES ━━
   @Operations Manager | Delta Air Lines
   @Department Manager | Delta Air Lines
   @Assistant Department Manager | Delta Air Lines
   @Supervisor | Delta Air Lines
   @━━ MIDDLE RANK ━━
+  @Marketing Manager | Delta Air Lines
+  @External Affairs Manager | Delta Air Lines
+  @Public Relations Manager | Delta Air Lines
+  @Marketing Coordinator | Delta Air Lines
+  @External Affairs Coordinator | Delta Air Lines
+  @Community Relations Specialist | Delta Air Lines
+  @━━ MARKETING & EXTERNAL AFFAIRS ━━
   @Senior Administration | Delta Air Lines
   @Administration | Delta Air Lines
   @Senior Moderation | Delta Air Lines
@@ -125,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.0.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.1.0** before applying the layout.
 
 ## Hosting configuration
 

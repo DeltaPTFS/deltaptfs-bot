@@ -28,6 +28,8 @@ const ROLE_GROUPS = [
       { name: 'Lead of Flight Deck Department', color: '#C2185B', hoist: true, permissions: ['ManageChannels'] },
       { name: 'Lead of ATC Department', color: '#AD1457', hoist: true, permissions: ['ManageChannels'] },
       { name: 'Lead of Ground Operations Department', color: '#880E4F', hoist: true, permissions: ['ManageChannels'] },
+      { name: 'Lead of Marketing Department', color: '#D7266D', hoist: true, permissions: ['ManageChannels'] },
+      { name: 'Lead of External Affairs Department', color: '#7048E8', hoist: true, permissions: ['ManageChannels'] },
     ],
   },
   {
@@ -38,6 +40,18 @@ const ROLE_GROUPS = [
       { name: 'Department Manager', color: '#8E24AA', hoist: true },
       { name: 'Assistant Department Manager', color: '#9C27B0', hoist: true },
       { name: 'Supervisor', color: '#AB47BC', hoist: true },
+    ],
+  },
+  {
+    name: 'Marketing & External Affairs',
+    categoryRole: { name: '━━ MARKETING & EXTERNAL AFFAIRS ━━', color: '#3D405B' },
+    roles: [
+      { name: 'Marketing Manager', color: '#E75480', hoist: true },
+      { name: 'External Affairs Manager', color: '#6C5CE7', hoist: true },
+      { name: 'Public Relations Manager', color: '#00A6A6', hoist: true },
+      { name: 'Marketing Coordinator', color: '#F06292' },
+      { name: 'External Affairs Coordinator', color: '#7E57C2' },
+      { name: 'Community Relations Specialist', color: '#26C6DA' },
     ],
   },
   {

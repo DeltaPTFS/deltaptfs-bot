@@ -45,8 +45,28 @@ test('role hierarchy has unique names and required department roles', () => {
   assert.ok(names.includes('senior administration | delta air lines'));
   assert.ok(names.includes('skymiles member | delta air lines'));
   assert.ok(names.includes('captain | delta air lines'));
+  assert.ok(names.includes('lead of marketing department | delta air lines'));
+  assert.ok(names.includes('lead of external affairs department | delta air lines'));
+  assert.ok(names.includes('marketing manager | delta air lines'));
+  assert.ok(names.includes('external affairs coordinator | delta air lines'));
   assert.match(formatRoles(), /@━━ FLIGHT OPERATIONS ━━/);
   assert.match(formatRoles(), /@Lead of ATC Department/);
+});
+
+test('marketing and external affairs roles have a complete department hierarchy', () => {
+  const executives = ROLE_GROUPS.find(({ name }) => name === 'Executives');
+  assert.ok(executives.roles.some(({ name }) => name === 'Lead of Marketing Department'));
+  assert.ok(executives.roles.some(({ name }) => name === 'Lead of External Affairs Department'));
+
+  const department = ROLE_GROUPS.find(({ name }) => name === 'Marketing & External Affairs');
+  assert.deepEqual(department.roles.map(({ name }) => name), [
+    'Marketing Manager',
+    'External Affairs Manager',
+    'Public Relations Manager',
+    'Marketing Coordinator',
+    'External Affairs Coordinator',
+    'Community Relations Specialist',
+  ]);
 });
 
 test('every configured role has a unique hexadecimal color and an app role exists', () => {
