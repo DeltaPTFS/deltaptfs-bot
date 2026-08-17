@@ -125,7 +125,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v2.2.1** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v2.3.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -187,19 +187,13 @@ INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
 
 If neither a command upload nor a banner URL is available, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
 
-## Roblox Community role synchronization
+## Managed Discord role updates and Roblox synchronization
 
-The captcha and Roblox OAuth verification panel have been removed. Discord roles can instead mirror ranks from the [Delta Roblox Community](https://www.roblox.com/share/g/650682730). Set `ROBLOX_COMMUNITY_ID` to the Community's numeric group ID (open the share link and copy the ID from the resulting Community URL), then restart the bot.
+Members whose highest Discord role is at or above the `━━ EXECUTIVES ━━` role (ID `1533718284615291042`) can add a managed role with `/update user:@Member role:@Role`. Authorization uses Discord role positions rather than checking only for the exact Executives role. The requested role must be below both the caller's highest role and the bot's highest role. The command rejects the server owner, `@everyone`, integration-managed roles, and roles the target already holds. It only adds the selected role and never removes unrelated roles.
 
-Roblox rank names must match Discord role names. For example, Roblox rank `Captain` maps to `Captain | Delta Air Lines`. The bot removes other Discord roles whose names match ranks in that same Roblox Community, then grants the member's current rank. It never changes unrelated Discord roles.
+Members can continue using `/getrole` to synchronize their own Roblox Community rank. Roblox rank names must match Discord role names—for example, Roblox rank `Captain` maps to `Captain | Delta Air Lines`. Configure the Community with `ROBLOX_COMMUNITY_ID` as described above.
 
-1. A Board of Directors or Leadership member runs `/update user-role user:@Member roblox-username:ExactRobloxName` once. This records the approved Roblox username as the member's server nickname and synchronizes their role.
-2. The member can later run `/getrole` with no options. The bot uses the Leadership-approved server nickname and fetches their current Roblox Community rank.
-3. Leadership cannot update a member whose highest Discord role is equal to or above theirs, or another member in their own configured division.
-
-This is an administrative rank-sync workflow, not account-ownership verification. Leadership must confirm the Roblox username belongs to the selected Discord member before approving the first update. The bot needs **Manage Roles** and **Manage Nicknames**, and its role must be above every role/member it changes. Public Roblox endpoints are used only to resolve the username and read Community membership; no Roblox password, cookie, OAuth secret, or API key is collected.
-
-The `/setup` command has separate `mode` and `section` choices. Choose **Roles only**, **Categories and channels only**, or **Roles and categories/channels** in either preview or apply mode. Existing unbranded member roles are renamed to `[Role Name] | Delta Air Lines`; separator roles such as `━━ LEADERSHIP ━━` retain their separator names.
+The bot needs **Manage Roles**, and its role must be above every role it may assign. Discord's hierarchy applies even when the bot has broad server permissions.
 
 ### Verification visibility
 

@@ -9,7 +9,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 const { SERVER_LAYOUT, formatLayout } = require('./layout');
-const { ROLE_GROUPS, formatRoles, roleDefinitions } = require('./roles');
+const { formatRoles, roleDefinitions } = require('./roles');
 const {
   awardMiles,
   getBalance,
@@ -19,6 +19,7 @@ const {
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { createRobloxRoleSync } = require('./roblox-roles');
+const { successEmbed, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -93,12 +94,9 @@ for (const message of INFO_MESSAGES) {
 
 const updateCommand = new SlashCommandBuilder()
   .setName('update')
-  .setDescription('Leadership tools for Delta Roblox Community roles')
-  .addSubcommand((subcommand) => subcommand
-    .setName('user-role')
-    .setDescription('Update a lower-ranking member from the Roblox Community')
-    .addUserOption((option) => option.setName('user').setDescription('Discord member to update').setRequired(true))
-    .addStringOption((option) => option.setName('roblox-username').setDescription('Member’s exact Roblox username').setRequired(true)));
+  .setDescription('Assign a managed role to a member (Executives and higher)')
+  .addUserOption((option) => option.setName('user').setDescription('Discord member to update').setRequired(true))
+  .addRoleOption((option) => option.setName('role').setDescription('Role to add').setRequired(true));
 
 const getRoleCommand = new SlashCommandBuilder()
   .setName('getrole')
@@ -540,64 +538,60 @@ async function handleInfo(interaction) {
   await interaction.editReply(`Posted ${INFO_MESSAGES.length} standalone information messages.${bannerNote}`);
 }
 
-function memberDivision(member) {
-  for (const group of ROLE_GROUPS) {
-    if (group.roles.some((definition) => member.roles.cache.some((role) =>
-      role.name.toLowerCase() === `${definition.name} | delta airlines`.toLowerCase()
-      || role.name.toLowerCase() === `${definition.name} | delta air lines`.toLowerCase()
-      || role.name.toLowerCase() === definition.name.toLowerCase()))) return group.name;
-  }
-  return null;
-}
-
-async function handleRobloxRoleCommand(interaction) {
+async function handleUpdate(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({ content: 'Run this command inside the Delta server.', ephemeral: true });
-    return;
-  }
-  if (!robloxRoles.configured()) {
-    await interaction.reply({
-      content: 'Roblox role sync is not configured yet. Add `ROBLOX_COMMUNITY_ID` to the bot host.',
-      ephemeral: true,
-    });
     return;
   }
 
   await interaction.deferReply({ ephemeral: true });
   try {
-    const actor = await interaction.guild.members.fetch(interaction.user.id);
-    let target = actor;
-    if (interaction.commandName === 'update') {
-      const actorDivision = memberDivision(actor);
-      if (!['Board of Directors', 'Leadership'].includes(actorDivision)) {
-        await interaction.editReply('Only Board of Directors and Leadership members can use `/update user-role`.');
-        return;
-      }
-
-      target = await interaction.guild.members.fetch(interaction.options.getUser('user', true).id);
-      if (target.id === actor.id) {
-        await interaction.editReply('Use `/getrole` to update your own role.');
-        return;
-      }
-      if (target.roles.highest.position >= actor.roles.highest.position) {
-        await interaction.editReply('You cannot update someone at or above your highest Discord role.');
-        return;
-      }
-      const targetDivision = memberDivision(target);
-      if (targetDivision && targetDivision === actorDivision) {
-        await interaction.editReply(`You cannot update another member within your own **${actorDivision}** division.`);
-        return;
-      }
+    const [caller, target, botMember] = await Promise.all([
+      interaction.guild.members.fetch(interaction.user.id),
+      interaction.guild.members.fetch(interaction.options.getUser('user', true).id),
+      interaction.guild.members.fetchMe(),
+    ]);
+    const requestedRole = interaction.options.getRole('role', true);
+    const validation = validateRoleUpdate({
+      guild: interaction.guild,
+      caller,
+      target,
+      requestedRole,
+      botMember,
+    });
+    if (!validation.ok) {
+      await interaction.editReply({ embeds: [validation.embed] });
+      return;
     }
 
-    const result = await robloxRoles.syncMember(
-      target,
-      interaction.commandName === 'update'
-        ? interaction.options.getString('roblox-username', true)
-        : target.displayName,
-    );
+    await target.roles.add(requestedRole, `Role update requested by ${interaction.user.tag}`);
+    await interaction.editReply({ embeds: [successEmbed(target, requestedRole, caller)] });
+  } catch (error) {
+    console.error('Discord role update failed:', error);
+    await interaction.editReply({ embeds: [{
+      color: 0xC8102E,
+      title: '❌ Unable to Assign Role',
+      description: `Discord could not assign the requested role: ${String(error.message || error).slice(0, 500)}`,
+    }] });
+  }
+}
+
+async function handleGetRole(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Run this command inside the Delta server.', ephemeral: true });
+    return;
+  }
+  if (!robloxRoles.configured()) {
+    await interaction.reply({ content: 'Roblox role sync is not configured yet. Add `ROBLOX_COMMUNITY_ID` to the bot host.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const result = await robloxRoles.syncMember(member, member.displayName);
     await interaction.editReply(
-      `Updated **${target.displayName}** to **${result.role.name}** from Roblox rank **${result.robloxRole.name}**.`,
+      `Updated **${member.displayName}** to **${result.role.name}** from Roblox rank **${result.robloxRole.name}**.`,
     );
   } catch (error) {
     console.error('Roblox role synchronization failed:', error);
@@ -624,8 +618,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleInfo(interaction);
     return;
   }
-  if (interaction.commandName === 'getrole' || interaction.commandName === 'update') {
-    await handleRobloxRoleCommand(interaction);
+  if (interaction.commandName === 'update') {
+    await handleUpdate(interaction);
+    return;
+  }
+  if (interaction.commandName === 'getrole') {
+    await handleGetRole(interaction);
     return;
   }
   if (interaction.commandName !== 'setup') return;
