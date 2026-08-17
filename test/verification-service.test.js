@@ -1,12 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { createVerificationService, hashState } = require('../src/verification-service');
 
 function responseRecorder() {
   return { writeHead(status, headers) { this.status = status; this.headers = headers; }, end(body) { this.body = body; } };
 }
 
-function setup(profileSub = '123') {
+function setup(profileSub = '123', guildId = 'guild') {
   const records = new Map();
   const pending = new Map();
   const database = {
@@ -19,7 +20,7 @@ function setup(profileSub = '123') {
   };
   const member = { toString: () => '<@discord>', roles: { add: async () => {} }, send: async () => {} };
   const config = {
-    guildId: 'guild', verifiedRoleId: 'verified', verificationApiKey: 'api-secret',
+    guildId, verifiedRoleId: 'verified', verificationApiKey: 'api-secret',
     robloxOauthClientId: 'client', robloxOauthClientSecret: 'secret', robloxOauthRedirectUri: 'https://bot.example/auth/roblox/callback',
   };
   const fetchImpl = async (url) => url.endsWith('/token')
@@ -28,7 +29,7 @@ function setup(profileSub = '123') {
   const service = createVerificationService({ config, database, fetchImpl,
     roblox: { getUserByUsername: async () => ({ id: 123, name: 'DeltaPilot' }), getUsernameFromUserId: async () => ({ id: 123, name: 'DeltaPilot' }) },
     roleSync: { sync: async () => ({ membership: null, added: [], removed: [] }) },
-    client: { guilds: { fetch: async () => ({ members: { fetch: async () => member }, roles: { fetch: async () => ({ id: 'verified', editable: true }) } }) } },
+    client: { guilds: { cache: new Map([['guild', {}]]), fetch: async () => ({ members: { fetch: async () => member }, roles: { fetch: async () => ({ id: 'verified', editable: true }) } }) } },
   });
   return { service, database, records, pending };
 }
@@ -76,4 +77,18 @@ test('verification refuses duplicate Discord and Roblox links before OAuth', asy
   records.delete('r:123');
   records.set('d:discord', { discord_user_id: 'discord', roblox_user_id: '456' });
   await assert.rejects(service.begin('discord', 'guild', 'DeltaPilot'), /already verified/);
+});
+
+test('verification works without GUILD_ID when the bot is installed in one server', async () => {
+  const { service, pending } = setup('123', null);
+  assert.equal(service.configured(), true);
+  const started = await service.begin('discord', 'the-only-guild', 'DeltaPilot');
+  const state = new URL(started.payload.components[0].components[0].url).searchParams.get('state');
+  assert.equal(pending.get(hashState(state)).guildId, 'the-only-guild');
+  assert.match(fs.readFileSync('src/index.js', 'utf8'), /!config\.guildId \|\| String\(interaction\.guildId\)/);
+});
+
+test('a stale GUILD_ID does not block verification when the bot has only one server', async () => {
+  const { service } = setup('123', 'old-guild-id');
+  await assert.doesNotReject(service.begin('discord', 'the-only-current-guild', 'DeltaPilot'));
 });

@@ -562,7 +562,9 @@ async function handleInfo(interaction) {
 }
 
 function correctGuild(interaction) {
-  return interaction.inGuild() && config.guildId && String(interaction.guildId) === String(config.guildId);
+  if (!interaction.inGuild()) return false;
+  if (client.guilds.cache.size === 1) return true;
+  return !config.guildId || String(interaction.guildId) === String(config.guildId);
 }
 
 async function recordAudit(interaction, entry, embed) {

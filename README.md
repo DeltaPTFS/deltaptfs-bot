@@ -134,14 +134,15 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.1.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.1.1** before applying the layout.
 
 ## Hosting configuration
 
 - **Build Command:** `npm install && npm run build`
 - **Start Command:** `npm start`
 - **Runtime:** Node.js 20 or later
-- **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `GUILD_ID`, `EXECUTIVE_ROLE_ID`, `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
+- **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `EXECUTIVE_ROLE_ID`, `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
+- **Optional guild restriction:** `GUILD_ID`. When the bot is installed in only one server, that server is accepted automatically even if this value is empty or stale. If the bot is installed in multiple servers, commands are restricted to the configured ID.
 - **Role sync:** `ROLE_MAPPINGS` is a JSON object mapping each Roblox group-role ID to one Discord role ID or an array of IDs; `MANAGED_ROLE_IDS` is a JSON array of every Discord role verification may remove.
 - **Optional logging:** `LOG_CHANNEL_ID`
 - **In-game lookup security:** `VERIFICATION_API_KEY`

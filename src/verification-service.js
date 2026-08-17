@@ -11,13 +11,16 @@ function html(response, status, title, message) {
 
 function createVerificationService({ config, database, roblox, roleSync, client, fetchImpl = global.fetch }) {
   function configured() {
-    return Boolean(database.configured && config.guildId && config.robloxOauthClientId
+    return Boolean(database.configured && config.robloxOauthClientId
       && config.robloxOauthClientSecret && config.robloxOauthRedirectUri && config.verifiedRoleId);
   }
 
   async function begin(discordUserId, guildId, username) {
     if (!configured()) throw new Error('Verification is not fully configured by an administrator');
-    if (String(guildId) !== String(config.guildId)) throw new Error('Use verification in the configured Delta Air Lines server');
+    const installedInOneGuild = client.guilds.cache?.size === 1;
+    if (!installedInOneGuild && config.guildId && String(guildId) !== String(config.guildId)) {
+      throw new Error('Use verification in the configured Delta Air Lines server');
+    }
     const existing = await database.getByDiscordId(discordUserId);
     if (existing) throw new Error('Your Discord account is already verified. Contact leadership to unlink it.');
     const user = await roblox.getUserByUsername(username);
