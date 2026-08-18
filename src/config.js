@@ -45,4 +45,15 @@ function loadConfig(environment = process.env) {
   });
 }
 
-module.exports = { loadConfig, parseIdList, parseRoleMappings };
+function mergeGuildConfig(base, stored) {
+  if (!stored) return base;
+  const roleMappings = { ...base.roleMappings, ...stored.roleMappings };
+  return {
+    ...base,
+    ...stored,
+    roleMappings,
+    managedRoleIds: [...new Set([...base.managedRoleIds, ...stored.managedRoleIds])],
+  };
+}
+
+module.exports = { loadConfig, mergeGuildConfig, parseIdList, parseRoleMappings };

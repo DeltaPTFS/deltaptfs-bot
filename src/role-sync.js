@@ -1,11 +1,11 @@
 function createRoleSyncService({ config, roblox }) {
-  async function sync(member, robloxUserId) {
-    const membership = await roblox.getGroupMembership(robloxUserId);
+  async function sync(member, robloxUserId, effectiveConfig = config) {
+    const membership = await roblox.getGroupMembership(robloxUserId, effectiveConfig.robloxGroupId);
     const mappedIds = membership
-      ? config.roleMappings[String(membership.role?.id)] ?? []
+      ? effectiveConfig.roleMappings[String(membership.role?.id)] ?? []
       : [];
     const desiredIds = new Set(mappedIds);
-    const managedIds = new Set(config.managedRoleIds);
+    const managedIds = new Set(effectiveConfig.managedRoleIds);
     const botMember = member.guild.members.me ?? await member.guild.members.fetchMe();
     const added = [];
     const removed = [];
@@ -35,8 +35,8 @@ function createRoleSyncService({ config, roblox }) {
     return { membership, added, removed };
   }
 
-  async function removeManaged(member) {
-    const ids = new Set([...config.managedRoleIds, ...(config.verifiedRoleId ? [config.verifiedRoleId] : [])]);
+  async function removeManaged(member, effectiveConfig = config) {
+    const ids = new Set([...effectiveConfig.managedRoleIds, ...(effectiveConfig.verifiedRoleId ? [effectiveConfig.verifiedRoleId] : [])]);
     const botMember = member.guild.members.me ?? await member.guild.members.fetchMe();
     const removed = [];
     for (const roleId of ids) {

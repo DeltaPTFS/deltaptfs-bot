@@ -18,11 +18,11 @@ const {
 } = require('./sheets');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
-const { loadConfig } = require('./config');
+const { loadConfig, mergeGuildConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { createRobloxService } = require('./roblox-service');
 const { createRoleSyncService } = require('./role-sync');
-const { createVerificationService } = require('./verification-service');
+const { createVerificationService, validateRpName } = require('./verification-service');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
@@ -36,9 +36,13 @@ if (!token) {
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
+async function effectiveGuildConfig(guildId) {
+  if (!database.configured) return config;
+  return mergeGuildConfig(config, await database.getGuildConfig(guildId));
+}
 const roblox = createRobloxService({ groupId: config.robloxGroupId });
 const roleSync = createRoleSyncService({ config, roblox });
-const verification = createVerificationService({ config, database, roblox, roleSync, client });
+const verification = createVerificationService({ config, database, roblox, roleSync, client, getGuildConfig: effectiveGuildConfig });
 const health = startHealthServer({ requestHandler: verification.handleRequest });
 
 const setupCommand = new SlashCommandBuilder()
@@ -119,6 +123,23 @@ const unlinkCommand = new SlashCommandBuilder()
   .setName('unlink')
   .setDescription('Unlink a member’s Roblox verification (Executives and higher)')
   .addUserOption((option) => option.setName('user').setDescription('Verified Discord member to unlink').setRequired(true));
+
+const verificationConfigCommand = new SlashCommandBuilder()
+  .setName('verification-config')
+  .setDescription('Configure Delta Air Lines verification for this server')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addSubcommand((subcommand) => subcommand.setName('view').setDescription('View verification configuration'))
+  .addSubcommand((subcommand) => subcommand.setName('set').setDescription('Set core verification configuration')
+    .addRoleOption((option) => option.setName('verified-role').setDescription('Role granted after verification').setRequired(true))
+    .addRoleOption((option) => option.setName('unverified-role').setDescription('Role removed after verification').setRequired(true))
+    .addStringOption((option) => option.setName('roblox-group-id').setDescription('Numeric Delta Roblox group ID').setRequired(true))
+    .addChannelOption((option) => option.setName('log-channel').setDescription('Staff verification and role audit channel')))
+  .addSubcommand((subcommand) => subcommand.setName('mapping-add').setDescription('Map a Roblox group role to a Discord role')
+    .addStringOption((option) => option.setName('roblox-role-id').setDescription('Numeric Roblox group-role ID').setRequired(true))
+    .addRoleOption((option) => option.setName('discord-role').setDescription('Discord role to synchronize').setRequired(true)))
+  .addSubcommand((subcommand) => subcommand.setName('mapping-remove').setDescription('Remove a Roblox role mapping')
+    .addStringOption((option) => option.setName('roblox-role-id').setDescription('Numeric Roblox group-role ID').setRequired(true))
+    .addRoleOption((option) => option.setName('discord-role').setDescription('Specific mapped role; omit to remove all mappings')));
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -450,14 +471,28 @@ async function applyChannels(guild) {
 
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
-  const unverified = member.guild.roles.cache.find((role) =>
-    ['unverified | delta air lines', 'unverified | delta airlines', 'unverified']
-      .includes(role.name.toLowerCase()));
+  const guildConfig = await effectiveGuildConfig(member.guild.id).catch(() => config);
+  const unverified = (guildConfig.unverifiedRoleId && member.guild.roles.cache.get(guildConfig.unverifiedRoleId))
+    || member.guild.roles.cache.find((role) =>
+      ['unverified | delta air lines', 'unverified | delta airlines', 'unverified']
+        .includes(role.name.toLowerCase()));
   if (!unverified?.editable) return;
   try {
     await member.roles.add(unverified, 'New Delta Airlines member awaiting verification');
   } catch (error) {
     console.error('Could not assign the Unverified role:', error);
+  }
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  if (newMember.user.bot || oldMember.nickname === newMember.nickname || !database.configured) return;
+  try {
+    const record = await database.getByDiscordId(newMember.id);
+    if (record?.rp_name && newMember.nickname !== record.rp_name && newMember.manageable) {
+      await newMember.setNickname(record.rp_name, 'Verified RP names can only be changed through support');
+    }
+  } catch (error) {
+    console.error('Could not enforce verified RP name:', error);
   }
 });
 
@@ -471,6 +506,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     await readyClient.application.commands.set([
       setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), verifyCommand.toJSON(), unlinkCommand.toJSON(),
+      verificationConfigCommand.toJSON(),
     ]);
     health.markReady();
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
@@ -569,12 +605,13 @@ function correctGuild(interaction) {
 
 async function recordAudit(interaction, entry, embed) {
   console.info('Role audit:', JSON.stringify({ ...entry, timestamp: new Date().toISOString() }));
+  const guildConfig = await effectiveGuildConfig(interaction.guildId).catch(() => config);
   if (database.configured) {
     try { await database.logRoleAction(entry); } catch (error) { console.error('Could not persist role audit:', error); }
   }
-  if (config.logChannelId) {
+  if (guildConfig.logChannelId) {
     try {
-      const channel = await interaction.guild.channels.fetch(config.logChannelId);
+      const channel = await interaction.guild.channels.fetch(guildConfig.logChannelId);
       if (channel?.isTextBased()) await channel.send({ embeds: [embed] });
     } catch (error) { console.error('Could not send staff log embed:', error); }
   }
@@ -585,13 +622,28 @@ async function handleVerify(interaction) {
     await interaction.reply({ content: 'Use this command in the configured Delta Air Lines server.', ephemeral: true });
     return;
   }
+  const username = interaction.options.getString('roblox-username', true);
+  await interaction.showModal({
+    custom_id: `verify-rp:${username}`,
+    title: 'Choose Your Delta RP Name',
+    components: [
+      { type: 1, components: [{ type: 4, custom_id: 'rp-first-name', label: 'What would you like your RP name to be?', style: 1, placeholder: 'First name only, such as Jordan', min_length: 2, max_length: 20, required: true }] },
+      { type: 1, components: [{ type: 4, custom_id: 'rp-last-initial', label: 'RP last-name initial', style: 1, placeholder: 'One letter, such as S', min_length: 1, max_length: 2, required: true }] },
+      { type: 1, components: [{ type: 4, custom_id: 'rp-confirmation', label: 'Confirm this is NOT your real name', style: 1, placeholder: 'Type I CONFIRM', min_length: 9, max_length: 9, required: true }] },
+    ],
+  });
+}
+
+async function handleVerifyModal(interaction) {
   await interaction.deferReply({ ephemeral: true });
   try {
-    const result = await verification.begin(
-      interaction.user.id,
-      interaction.guildId,
-      interaction.options.getString('roblox-username', true),
+    const username = interaction.customId.slice('verify-rp:'.length);
+    const rpName = validateRpName(
+      interaction.fields.getTextInputValue('rp-first-name'),
+      interaction.fields.getTextInputValue('rp-last-initial'),
+      interaction.fields.getTextInputValue('rp-confirmation'),
     );
+    const result = await verification.begin(interaction.user.id, interaction.guildId, username, rpName);
     await interaction.editReply(result.payload);
   } catch (error) {
     console.error('Could not begin verification:', error);
@@ -661,10 +713,11 @@ async function handleGetRole(interaction) {
       interaction.guild.members.fetch(interaction.user.id),
       roblox.getUsernameFromUserId(record.roblox_user_id),
     ]);
+    const guildConfig = await effectiveGuildConfig(interaction.guildId);
     await database.saveVerification({ discordUserId: member.id, robloxUserId: record.roblox_user_id, robloxUsername: currentUser.name });
-    const verifiedRole = config.verifiedRoleId ? await interaction.guild.roles.fetch(config.verifiedRoleId) : null;
+    const verifiedRole = guildConfig.verifiedRoleId ? await interaction.guild.roles.fetch(guildConfig.verifiedRoleId) : null;
     if (verifiedRole && !member.roles.cache.has(verifiedRole.id)) await member.roles.add(verifiedRole, 'Restore verified role');
-    const result = await roleSync.sync(member, record.roblox_user_id);
+    const result = await roleSync.sync(member, record.roblox_user_id, guildConfig);
     await interaction.editReply({ embeds: [{
       color: 0x236192,
       title: '🎭 Role Synchronization Complete',
@@ -700,9 +753,10 @@ async function handleUnlink(interaction) {
       await interaction.editReply({ embeds: [{ color: 0x236192, title: 'ℹ️ No Verification Found', description: `${target} is not linked to a Roblox account.` }] });
       return;
     }
-    const removed = await roleSync.removeManaged(target);
-    if (config.unverifiedRoleId && !target.roles.cache.has(config.unverifiedRoleId)) {
-      const unverifiedRole = await interaction.guild.roles.fetch(config.unverifiedRoleId);
+    const guildConfig = await effectiveGuildConfig(interaction.guildId);
+    const removed = await roleSync.removeManaged(target, guildConfig);
+    if (guildConfig.unverifiedRoleId && !target.roles.cache.has(guildConfig.unverifiedRoleId)) {
+      const unverifiedRole = await interaction.guild.roles.fetch(guildConfig.unverifiedRoleId);
       if (!unverifiedRole?.editable) throw new Error('The configured Unverified role is not manageable by the bot');
       await target.roles.add(unverifiedRole, 'Roblox verification unlinked');
     }
@@ -725,7 +779,79 @@ async function handleUnlink(interaction) {
   }
 }
 
+async function handleVerificationConfig(interaction) {
+  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need **Manage Server** to configure verification.', ephemeral: true });
+    return;
+  }
+  if (!database.configured) {
+    await interaction.reply({ content: 'Configure `DATABASE_URL` before using verification configuration.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'set') {
+      const verifiedRole = interaction.options.getRole('verified-role', true);
+      const unverifiedRole = interaction.options.getRole('unverified-role', true);
+      const logChannel = interaction.options.getChannel('log-channel');
+      const groupId = interaction.options.getString('roblox-group-id', true).trim();
+      if (!/^\d+$/.test(groupId)) throw new Error('Roblox group ID must contain numbers only.');
+      if (verifiedRole.managed || unverifiedRole.managed) throw new Error('Integration-managed roles cannot be verification roles.');
+      if (!verifiedRole.editable || !unverifiedRole.editable) throw new Error('Move the bot role above Verified and Unverified first.');
+      if (logChannel && !logChannel.isTextBased()) throw new Error('The log channel must be a text channel.');
+      await database.saveGuildConfig({
+        guildId: interaction.guildId,
+        verifiedRoleId: verifiedRole.id,
+        unverifiedRoleId: unverifiedRole.id,
+        logChannelId: logChannel?.id ?? null,
+        robloxGroupId: groupId,
+        updatedBy: interaction.user.id,
+      });
+    } else if (subcommand === 'mapping-add') {
+      if (!await database.getGuildConfig(interaction.guildId)) throw new Error('Run `/verification-config set` first.');
+      const robloxRoleId = interaction.options.getString('roblox-role-id', true).trim();
+      const discordRole = interaction.options.getRole('discord-role', true);
+      if (!/^\d+$/.test(robloxRoleId)) throw new Error('Roblox role ID must contain numbers only.');
+      if (discordRole.id === interaction.guild.roles.everyone.id || discordRole.managed || !discordRole.editable) {
+        throw new Error('That Discord role cannot be managed by verification.');
+      }
+      await database.addRoleMapping(interaction.guildId, robloxRoleId, discordRole.id);
+    } else if (subcommand === 'mapping-remove') {
+      const robloxRoleId = interaction.options.getString('roblox-role-id', true).trim();
+      if (!/^\d+$/.test(robloxRoleId)) throw new Error('Roblox role ID must contain numbers only.');
+      await database.removeRoleMapping(interaction.guildId, robloxRoleId, interaction.options.getRole('discord-role')?.id ?? null);
+    }
+
+    const stored = await database.getGuildConfig(interaction.guildId);
+    if (!stored) {
+      await interaction.editReply({ embeds: [{ color: 0x236192, title: 'ℹ️ Verification Not Configured', description: 'Run `/verification-config set` to configure this server.' }] });
+      return;
+    }
+    const mappings = Object.entries(stored.roleMappings).flatMap(([robloxRoleId, discordRoleIds]) =>
+      discordRoleIds.map((discordRoleId) => `Roblox \`${robloxRoleId}\` → <@&${discordRoleId}>`));
+    await interaction.editReply({ embeds: [{
+      color: 0x071D49,
+      title: subcommand === 'view' ? '⚙️ Verification Configuration' : '✅ Verification Configuration Updated',
+      fields: [
+        { name: 'Verified Role', value: `<@&${stored.verifiedRoleId}>`, inline: true },
+        { name: 'Unverified Role', value: `<@&${stored.unverifiedRoleId}>`, inline: true },
+        { name: 'Roblox Group ID', value: stored.robloxGroupId, inline: true },
+        { name: 'Log Channel', value: stored.logChannelId ? `<#${stored.logChannelId}>` : 'Not configured', inline: true },
+        { name: 'Role Mappings', value: mappings.join('\n').slice(0, 1024) || 'None configured' },
+      ],
+    }] });
+  } catch (error) {
+    console.error('Verification configuration failed:', error);
+    await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Configuration Failed', description: String(error.message || error).slice(0, 500) }] });
+  }
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('verify-rp:')) {
+    await handleVerifyModal(interaction);
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'bot-version') {
@@ -758,6 +884,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'unlink') {
     await handleUnlink(interaction);
+    return;
+  }
+  if (interaction.commandName === 'verification-config') {
+    await handleVerificationConfig(interaction);
     return;
   }
   if (interaction.commandName !== 'setup') return;

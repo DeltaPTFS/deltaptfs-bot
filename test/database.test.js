@@ -16,6 +16,9 @@ test('PostgreSQL initialization creates verification, session, and audit tables'
   assert.match(schema, /roblox_user_id BIGINT UNIQUE NOT NULL/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS verification_sessions/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS role_update_logs/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS guild_verification_config/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS guild_role_mappings/);
+  assert.match(schema, /rp_name TEXT/);
 });
 
 test('database methods fail safely when DATABASE_URL is absent', async () => {

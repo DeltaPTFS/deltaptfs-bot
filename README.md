@@ -134,17 +134,16 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.1.1** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.2.0** before applying the layout.
 
 ## Hosting configuration
 
 - **Build Command:** `npm install && npm run build`
 - **Start Command:** `npm start`
 - **Runtime:** Node.js 20 or later
-- **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `EXECUTIVE_ROLE_ID`, `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
+- **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
 - **Optional guild restriction:** `GUILD_ID`. When the bot is installed in only one server, that server is accepted automatically even if this value is empty or stale. If the bot is installed in multiple servers, commands are restricted to the configured ID.
-- **Role sync:** `ROLE_MAPPINGS` is a JSON object mapping each Roblox group-role ID to one Discord role ID or an array of IDs; `MANAGED_ROLE_IDS` is a JSON array of every Discord role verification may remove.
-- **Optional logging:** `LOG_CHANNEL_ID`
+- **Optional environment fallbacks:** `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `LOG_CHANNEL_ID`, `ROLE_MAPPINGS`, and `MANAGED_ROLE_IDS`. These non-secret settings can instead be maintained with `/verification-config`.
 - **In-game lookup security:** `VERIFICATION_API_KEY`
 - **Optional Sheets:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
 - **Optional banners:** the six `INFO_*_BANNER_URL` variables shown in `.env.example`
@@ -198,9 +197,22 @@ If neither a command upload nor a banner URL is available, `/info` still posts t
 
 ## Discord ↔ Roblox verification and role management
 
+### `/verification-config`
+
+Members with **Manage Server** can configure verification without editing role IDs on Render:
+
+- `/verification-config set` sets the Verified role, Unverified role, Roblox group ID, and optional staff log channel.
+- `/verification-config mapping-add` maps a Roblox group-role ID to a Discord role.
+- `/verification-config mapping-remove` removes one or all mappings for a Roblox group role.
+- `/verification-config view` displays the current configuration and mappings.
+
+OAuth client credentials and `DATABASE_URL` remain environment-only secrets and are never accepted through Discord commands.
+
 ### `/verify roblox-username:Name`
 
-The bot resolves the supplied username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. The PostgreSQL record stores Discord ID, Roblox ID, current username, verification time, and last-update time. A successful callback grants Verified, removes Unverified, attempts configured group-role synchronization, and privately confirms the result to the member.
+After the member supplies a Roblox username, the bot opens a private RP-name prompt asking **“What would you like your RP name to be?”** The member supplies an RP first name, one last-name initial, and types `I CONFIRM` to confirm it is not their real name. Valid names use a format such as `Jordan S.`.
+
+The bot then resolves the Roblox username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. PostgreSQL stores the Discord ID, Roblox ID, current Roblox username, RP name, verification time, and last-update time. A successful callback grants Verified, removes Unverified, changes the server nickname to the RP name, attempts configured group-role synchronization, and privately confirms the result. RP names cannot be changed through `/verify` after verification; the bot restores the stored RP name if a verified member changes their nickname. Members must open a support ticket for a leadership-approved change. A future support bot should update `verifications.rp_name` before applying the approved nickname.
 
 ### `/getrole`
 

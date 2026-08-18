@@ -36,9 +36,9 @@ function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
     const data = await request(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
     return data.data ?? [];
   }
-  async function getGroupMembership(userId) {
-    if (!groupId) throw new Error('ROBLOX_GROUP_ID is not configured');
-    return (await getUserGroups(userId)).find((entry) => String(entry.group?.id) === String(groupId)) ?? null;
+  async function getGroupMembership(userId, configuredGroupId = groupId) {
+    if (!configuredGroupId) throw new Error('The Roblox group ID is not configured');
+    return (await getUserGroups(userId)).find((entry) => String(entry.group?.id) === String(configuredGroupId)) ?? null;
   }
   return { getUserByUsername, getUsernameFromUserId, getUserGroups, getGroupMembership, request };
 }

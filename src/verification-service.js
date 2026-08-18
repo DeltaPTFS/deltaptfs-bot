@@ -9,14 +9,29 @@ function html(response, status, title, message) {
   response.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>${title}</title></head><body style="font-family:system-ui;background:#071D49;color:#fff;padding:3rem"><h1>${title}</h1><p>${message}</p><p>You may close this page and return to Discord.</p></body></html>`);
 }
 
-function createVerificationService({ config, database, roblox, roleSync, client, fetchImpl = global.fetch }) {
+function validateRpName(firstName, lastInitial, confirmation) {
+  const first = firstName.trim();
+  const initial = lastInitial.trim().replace(/\.$/, '').toUpperCase();
+  if (!/^[A-Za-z][A-Za-z'-]{1,19}$/.test(first) || !/^[A-Z]$/.test(initial)) {
+    throw new Error('Use an RP first name followed by one last-name initial, such as Jordan S.');
+  }
+  if (confirmation.trim().toUpperCase() !== 'I CONFIRM') {
+    throw new Error('You must confirm that the RP name is not your real name.');
+  }
+  return `${first} ${initial}.`;
+}
+
+function createVerificationService({ config, database, roblox, roleSync, client, getGuildConfig = async () => config, fetchImpl = global.fetch }) {
   function configured() {
     return Boolean(database.configured && config.robloxOauthClientId
-      && config.robloxOauthClientSecret && config.robloxOauthRedirectUri && config.verifiedRoleId);
+      && config.robloxOauthClientSecret && config.robloxOauthRedirectUri);
   }
 
-  async function begin(discordUserId, guildId, username) {
+  async function begin(discordUserId, guildId, username, rpName) {
     if (!configured()) throw new Error('Verification is not fully configured by an administrator');
+    if (!/^[A-Za-z][A-Za-z'-]{1,19} [A-Z]\.$/.test(rpName || '')) {
+      throw new Error('Choose a valid RP first name and last initial before verification.');
+    }
     const installedInOneGuild = client.guilds.cache?.size === 1;
     if (!installedInOneGuild && config.guildId && String(guildId) !== String(config.guildId)) {
       throw new Error('Use verification in the configured Delta Air Lines server');
@@ -29,7 +44,11 @@ function createVerificationService({ config, database, roblox, roleSync, client,
 
     const state = randomBytes(32).toString('base64url');
     const codeVerifier = randomBytes(48).toString('base64url');
-    await database.createPending({ stateHash: hashState(state), discordUserId, guildId, robloxUserId: user.id, codeVerifier });
+    const effectiveConfig = await getGuildConfig(guildId);
+    if (!effectiveConfig.verifiedRoleId || !effectiveConfig.unverifiedRoleId || !effectiveConfig.robloxGroupId) {
+      throw new Error('Run `/verification-config set` before members verify.');
+    }
+    await database.createPending({ stateHash: hashState(state), discordUserId, guildId, robloxUserId: user.id, codeVerifier, rpName });
     const url = new URL('https://apis.roblox.com/oauth/v1/authorize');
     url.search = new URLSearchParams({
       client_id: config.robloxOauthClientId,
@@ -98,6 +117,7 @@ function createVerificationService({ config, database, roblox, roleSync, client,
     let savedDiscordId = null;
     let member = null;
     let verifiedRole = null;
+    let previousNickname;
     try {
       const session = await database.consumePending(hashState(state));
       if (!session) throw new Error('This verification link is invalid or expired');
@@ -106,23 +126,28 @@ function createVerificationService({ config, database, roblox, roleSync, client,
         throw new Error('The authorized Roblox account did not match the requested username');
       }
       const currentUser = await roblox.getUsernameFromUserId(profile.sub);
-      await database.saveVerification({ discordUserId: session.discord_user_id, robloxUserId: profile.sub, robloxUsername: currentUser.name });
+      await database.saveVerification({ discordUserId: session.discord_user_id, robloxUserId: profile.sub, robloxUsername: currentUser.name, rpName: session.rp_name });
       savedDiscordId = session.discord_user_id;
       const guild = await client.guilds.fetch(session.guild_id);
+      const effectiveConfig = await getGuildConfig(session.guild_id);
       member = await guild.members.fetch(session.discord_user_id);
-      verifiedRole = await guild.roles.fetch(config.verifiedRoleId);
+      verifiedRole = await guild.roles.fetch(effectiveConfig.verifiedRoleId);
       if (!verifiedRole || !verifiedRole.editable) throw new Error('The configured Verified role is not manageable by the bot');
+      if (!member.manageable) throw new Error('The bot role must be above the member before setting their RP name');
+      previousNickname = member.nickname;
+      await member.setNickname(session.rp_name, 'Set verified Delta Air Lines RP name');
       await member.roles.add(verifiedRole, `Verified Roblox user ${profile.sub}`);
-      if (config.unverifiedRoleId && member.roles.cache.has(config.unverifiedRoleId)) {
-        const unverifiedRole = await guild.roles.fetch(config.unverifiedRoleId);
+      if (effectiveConfig.unverifiedRoleId && member.roles.cache.has(effectiveConfig.unverifiedRoleId)) {
+        const unverifiedRole = await guild.roles.fetch(effectiveConfig.unverifiedRoleId);
         if (!unverifiedRole?.editable) throw new Error('The configured Unverified role is not manageable by the bot');
         await member.roles.remove(unverifiedRole, `Verified Roblox user ${profile.sub}`);
       }
       let sync = { membership: null, added: [], removed: [] };
-      try { sync = await roleSync.sync(member, profile.sub); } catch (syncError) { console.error('Post-verification role sync failed:', syncError); }
+      try { sync = await roleSync.sync(member, profile.sub, effectiveConfig); } catch (syncError) { console.error('Post-verification role sync failed:', syncError); }
       await member.send({ embeds: [{ color: 0x2E8540, title: '✅ Verification Complete', fields: [
         { name: 'Discord', value: `${member}`, inline: true }, { name: 'Roblox', value: currentUser.name, inline: true },
-        { name: 'Roblox ID', value: String(profile.sub), inline: true }, { name: 'Status', value: 'Verified', inline: true },
+        { name: 'Roblox ID', value: String(profile.sub), inline: true }, { name: 'RP Name', value: session.rp_name, inline: true },
+        { name: 'Status', value: 'Verified', inline: true },
       ] }] }).catch(() => {});
       html(response, 200, 'Verification complete', `${currentUser.name} is now linked to your Discord account.`);
     } catch (error) {
@@ -131,6 +156,9 @@ function createVerificationService({ config, database, roblox, roleSync, client,
         await database.unlink(savedDiscordId).catch((cleanupError) => console.error('Could not roll back verification record:', cleanupError));
         if (member && verifiedRole && member.roles.cache.has(verifiedRole.id)) {
           await member.roles.remove(verifiedRole, 'Roll back failed Roblox verification').catch(() => {});
+        }
+        if (member && member.manageable) {
+          await member.setNickname(previousNickname ?? null, 'Roll back failed Roblox verification').catch(() => {});
         }
       }
       const duplicate = error.code === 'DUPLICATE_VERIFICATION';
@@ -142,4 +170,4 @@ function createVerificationService({ config, database, roblox, roleSync, client,
   return { begin, configured, handleRequest };
 }
 
-module.exports = { createVerificationService, hashState };
+module.exports = { createVerificationService, hashState, validateRpName };

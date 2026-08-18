@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadConfig, parseRoleMappings } = require('../src/config');
+const { loadConfig, mergeGuildConfig, parseRoleMappings } = require('../src/config');
 
 test('central configuration combines mapped and explicitly managed role IDs', () => {
   const config = loadConfig({
@@ -14,4 +14,15 @@ test('central configuration combines mapped and explicitly managed role IDs', ()
 
 test('rejects malformed role mappings', () => {
   assert.throws(() => parseRoleMappings('{"Captain":"role"}'), /numeric Roblox role ID/);
+});
+
+test('stored guild configuration overrides core roles and extends environment mappings', () => {
+  const base = loadConfig({ ROLE_MAPPINGS: '{"10":"100"}', MANAGED_ROLE_IDS: '[]' });
+  const merged = mergeGuildConfig(base, {
+    verifiedRoleId: 'verified', unverifiedRoleId: 'unverified', robloxGroupId: '50',
+    roleMappings: { 20: ['200'] }, managedRoleIds: ['200'],
+  });
+  assert.equal(merged.verifiedRoleId, 'verified');
+  assert.deepEqual(merged.roleMappings, { 10: ['100'], 20: ['200'] });
+  assert.deepEqual(merged.managedRoleIds, ['100', '200']);
 });
