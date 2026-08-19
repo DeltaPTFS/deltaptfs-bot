@@ -31,11 +31,11 @@ function setup(profileSub = '123', guildId = 'guild') {
     roleSync: { sync: async () => ({ membership: null, added: [], removed: [] }) },
     client: { guilds: { cache: new Map([['guild', {}]]), fetch: async () => ({ members: { fetch: async () => member }, roles: { fetch: async () => ({ id: 'verified', editable: true }) } }) } },
   });
-  return { service, database, records, pending };
+  return { service, database, records, pending, member };
 }
 
 test('verification begins with persistent state and completes only for the authorized Roblox ID', async () => {
-  const { service, records, pending } = setup();
+  const { service, records, pending, member } = setup();
   const started = await service.begin('discord', 'guild', 'DeltaPilot', 'Jordan S.');
   const authorization = new URL(started.payload.components[0].components[0].url);
   const state = authorization.searchParams.get('state');
@@ -46,6 +46,7 @@ test('verification begins with persistent state and completes only for the autho
   assert.equal(response.status, 200);
   assert.equal(records.get('d:discord').roblox_user_id, '123');
   assert.equal(records.get('d:discord').rp_name, 'Jordan S.');
+  assert.equal(member.nickname, 'Jordan S. (@DeltaPilot)');
 });
 
 test('verification lookup API requires its server-side API key', async () => {
@@ -95,7 +96,18 @@ test('a stale GUILD_ID does not block verification when the bot has only one ser
 });
 
 test('RP names require a first name, last initial, and non-real-name confirmation', () => {
-  assert.equal(validateRpName('Jordan', 's', 'I CONFIRM'), 'Jordan S.');
-  assert.throws(() => validateRpName('Jordan Smith', 'S', 'I CONFIRM'), /first name/);
+  assert.equal(validateRpName('Jordan', 's', 'CONFIRMED'), 'Jordan S.');
+  assert.throws(() => validateRpName('Jordan Smith', 'S', 'CONFIRMED'), /first name/);
   assert.throws(() => validateRpName('Jordan', 'S', 'yes'), /not your real name/);
+});
+
+
+test('incomplete verification reports the exact missing Render variables', async () => {
+  const incomplete = createVerificationService({
+    config: {}, database: { configured: false }, roblox: {}, roleSync: {}, client: { guilds: { cache: new Map() } },
+  });
+  assert.deepEqual(incomplete.configurationIssues(), [
+    'DATABASE_URL', 'ROBLOX_OAUTH_CLIENT_ID', 'ROBLOX_OAUTH_CLIENT_SECRET', 'ROBLOX_OAUTH_REDIRECT_URI',
+  ]);
+  await assert.rejects(incomplete.begin('discord', 'guild', 'DeltaPilot', 'Jordan S.'), /DATABASE_URL.*ROBLOX_OAUTH_CLIENT_ID/);
 });

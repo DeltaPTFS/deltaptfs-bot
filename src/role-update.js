@@ -4,7 +4,8 @@ function result(title, description, color = COLORS.error) {
   return { ok: false, embed: { color, title, description } };
 }
 
-function validateExecutiveAccess(guild, caller, executiveRoleId, commandName = 'update') {
+function validateExecutiveAccess(guild, caller, executiveRoleId, commandName = 'update', allowedRoleIds = []) {
+  if (allowedRoleIds.some((roleId) => caller.roles.cache.has(roleId))) return { ok: true };
   const executiveRole = guild.roles.cache.get(executiveRoleId);
   if (!executiveRole || caller.roles.highest.position < executiveRole.position) {
     return result('❌ Access Denied', `You must be an Executive or higher to use \`/${commandName}\`.`);
@@ -12,8 +13,8 @@ function validateExecutiveAccess(guild, caller, executiveRoleId, commandName = '
   return { ok: true };
 }
 
-function validateRoleUpdate({ guild, caller, target, requestedRole, botMember, executiveRoleId }) {
-  const access = validateExecutiveAccess(guild, caller, executiveRoleId);
+function validateRoleUpdate({ guild, caller, target, requestedRole, botMember, executiveRoleId, allowedRoleIds = [] }) {
+  const access = validateExecutiveAccess(guild, caller, executiveRoleId, 'update', allowedRoleIds);
   if (!access.ok) return access;
 
   if (requestedRole.id === guild.roles.everyone.id) {

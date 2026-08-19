@@ -25,9 +25,15 @@ function parseRoleMappings(value) {
 
 function loadConfig(environment = process.env) {
   const roleMappings = parseRoleMappings(environment.ROLE_MAPPINGS);
+  const additionallyAuthorizedUpdateRoles = parseIdList(environment.UPDATE_ALLOWED_ROLE_IDS, 'UPDATE_ALLOWED_ROLE_IDS');
   return Object.freeze({
-    databaseUrl: environment.DATABASE_URL,
+    databaseUrl: environment.DATABASE_URL || environment.POSTGRES_URL || environment.POSTGRESQL_URL,
     executiveRoleId: environment.EXECUTIVE_ROLE_ID || '1533718284615291042',
+    updateAllowedRoleIds: [...new Set([
+      '1539005023995043880',
+      '1539005027748945971',
+      ...additionallyAuthorizedUpdateRoles,
+    ])],
     verifiedRoleId: environment.VERIFIED_ROLE_ID,
     unverifiedRoleId: environment.UNVERIFIED_ROLE_ID,
     guildId: environment.GUILD_ID,

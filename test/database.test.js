@@ -11,6 +11,7 @@ test('PostgreSQL initialization creates verification, session, and audit tables'
   }
   const database = createDatabase('postgresql://example', Pool);
   await database.init();
+  assert.equal(await database.ping(), true);
   const schema = calls[1][0];
   assert.match(schema, /CREATE TABLE IF NOT EXISTS verifications/);
   assert.match(schema, /roblox_user_id BIGINT UNIQUE NOT NULL/);
@@ -24,5 +25,6 @@ test('PostgreSQL initialization creates verification, session, and audit tables'
 test('database methods fail safely when DATABASE_URL is absent', async () => {
   const database = createDatabase();
   assert.equal(database.configured, false);
+  assert.equal(await database.ping(), false);
   await assert.rejects(database.getByDiscordId('1'), /DATABASE_URL/);
 });

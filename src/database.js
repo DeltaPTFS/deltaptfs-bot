@@ -1,7 +1,7 @@
 function createDatabase(databaseUrl, PoolClass = null) {
   if (!databaseUrl) {
     const unavailable = async () => { throw new Error('DATABASE_URL is not configured'); };
-    return { configured: false, init: unavailable, createPending: unavailable, consumePending: unavailable, saveVerification: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
+    return { configured: false, init: unavailable, ping: async () => false, createPending: unavailable, consumePending: unavailable, saveVerification: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
   }
   const DatabasePool = PoolClass ?? require('pg').Pool;
   const pool = new DatabasePool({ connectionString: databaseUrl, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
@@ -57,6 +57,11 @@ function createDatabase(databaseUrl, PoolClass = null) {
         PRIMARY KEY (guild_id, roblox_role_id, discord_role_id)
       );
     `);
+  }
+
+  async function ping() {
+    await pool.query('SELECT 1');
+    return true;
   }
 
   async function createPending(session) {
@@ -153,7 +158,7 @@ function createDatabase(databaseUrl, PoolClass = null) {
       AND ($3::BIGINT IS NULL OR discord_role_id=$3)`, [guildId, robloxRoleId, discordRoleId]);
     return getGuildConfig(guildId);
   }
-  return { configured: true, init, createPending, consumePending, saveVerification, getByDiscordId, getByRobloxId, unlink, logRoleAction, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
+  return { configured: true, init, ping, createPending, consumePending, saveVerification, getByDiscordId, getByRobloxId, unlink, logRoleAction, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
 }
 
 module.exports = { createDatabase };

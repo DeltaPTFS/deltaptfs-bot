@@ -3,6 +3,7 @@ const { createHash, randomBytes, timingSafeEqual } = require('node:crypto');
 const DELTA_BLUE = 0x071D49;
 const hashState = (state) => createHash('sha256').update(state).digest('hex');
 const base64UrlHash = (value) => createHash('sha256').update(value).digest('base64url');
+const formatVerifiedNickname = (rpName, robloxUsername) => `${rpName} (@${robloxUsername})`;
 
 function html(response, status, title, message) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -15,20 +16,31 @@ function validateRpName(firstName, lastInitial, confirmation) {
   if (!/^[A-Za-z][A-Za-z'-]{1,19}$/.test(first) || !/^[A-Z]$/.test(initial)) {
     throw new Error('Use an RP first name followed by one last-name initial, such as Jordan S.');
   }
-  if (confirmation.trim().toUpperCase() !== 'I CONFIRM') {
+  if (confirmation.trim().toUpperCase() !== 'CONFIRMED') {
     throw new Error('You must confirm that the RP name is not your real name.');
   }
   return `${first} ${initial}.`;
 }
 
 function createVerificationService({ config, database, roblox, roleSync, client, getGuildConfig = async () => config, fetchImpl = global.fetch }) {
+  function configurationIssues() {
+    return [
+      !database.configured && 'DATABASE_URL',
+      !config.robloxOauthClientId && 'ROBLOX_OAUTH_CLIENT_ID',
+      !config.robloxOauthClientSecret && 'ROBLOX_OAUTH_CLIENT_SECRET',
+      !config.robloxOauthRedirectUri && 'ROBLOX_OAUTH_REDIRECT_URI',
+    ].filter(Boolean);
+  }
+
   function configured() {
-    return Boolean(database.configured && config.robloxOauthClientId
-      && config.robloxOauthClientSecret && config.robloxOauthRedirectUri);
+    return configurationIssues().length === 0;
   }
 
   async function begin(discordUserId, guildId, username, rpName) {
-    if (!configured()) throw new Error('Verification is not fully configured by an administrator');
+    const missing = configurationIssues();
+    if (missing.length) {
+      throw new Error(`Verification setup is missing: ${missing.join(', ')}. Run \`/verification-config status\` after updating Render.`);
+    }
     if (!/^[A-Za-z][A-Za-z'-]{1,19} [A-Z]\.$/.test(rpName || '')) {
       throw new Error('Choose a valid RP first name and last initial before verification.');
     }
@@ -39,6 +51,9 @@ function createVerificationService({ config, database, roblox, roleSync, client,
     const existing = await database.getByDiscordId(discordUserId);
     if (existing) throw new Error('Your Discord account is already verified. Contact leadership to unlink it.');
     const user = await roblox.getUserByUsername(username);
+    if (formatVerifiedNickname(rpName, user.name).length > 32) {
+      throw new Error('That RP name is too long when combined with your Roblox username. Choose a shorter RP first name.');
+    }
     const linked = await database.getByRobloxId(user.id);
     if (linked) throw new Error('That Roblox account is already linked. Contact leadership if this is incorrect.');
 
@@ -135,7 +150,7 @@ function createVerificationService({ config, database, roblox, roleSync, client,
       if (!verifiedRole || !verifiedRole.editable) throw new Error('The configured Verified role is not manageable by the bot');
       if (!member.manageable) throw new Error('The bot role must be above the member before setting their RP name');
       previousNickname = member.nickname;
-      await member.setNickname(session.rp_name, 'Set verified Delta Air Lines RP name');
+      await member.setNickname(formatVerifiedNickname(session.rp_name, currentUser.name), 'Set verified Delta Air Lines RP name');
       await member.roles.add(verifiedRole, `Verified Roblox user ${profile.sub}`);
       if (effectiveConfig.unverifiedRoleId && member.roles.cache.has(effectiveConfig.unverifiedRoleId)) {
         const unverifiedRole = await guild.roles.fetch(effectiveConfig.unverifiedRoleId);
@@ -167,7 +182,7 @@ function createVerificationService({ config, database, roblox, roleSync, client,
     return true;
   }
 
-  return { begin, configured, handleRequest };
+  return { begin, configured, configurationIssues, handleRequest };
 }
 
-module.exports = { createVerificationService, hashState, validateRpName };
+module.exports = { createVerificationService, formatVerifiedNickname, hashState, validateRpName };

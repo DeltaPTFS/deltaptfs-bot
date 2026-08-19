@@ -22,7 +22,7 @@ const { loadConfig, mergeGuildConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { createRobloxService } = require('./roblox-service');
 const { createRoleSyncService } = require('./role-sync');
-const { createVerificationService, validateRpName } = require('./verification-service');
+const { createVerificationService, formatVerifiedNickname, validateRpName } = require('./verification-service');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
@@ -128,6 +128,7 @@ const verificationConfigCommand = new SlashCommandBuilder()
   .setName('verification-config')
   .setDescription('Configure Delta Air Lines verification for this server')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addSubcommand((subcommand) => subcommand.setName('status').setDescription('Check database and OAuth configuration'))
   .addSubcommand((subcommand) => subcommand.setName('view').setDescription('View verification configuration'))
   .addSubcommand((subcommand) => subcommand.setName('set').setDescription('Set core verification configuration')
     .addRoleOption((option) => option.setName('verified-role').setDescription('Role granted after verification').setRequired(true))
@@ -488,8 +489,11 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   if (newMember.user.bot || oldMember.nickname === newMember.nickname || !database.configured) return;
   try {
     const record = await database.getByDiscordId(newMember.id);
-    if (record?.rp_name && newMember.nickname !== record.rp_name && newMember.manageable) {
-      await newMember.setNickname(record.rp_name, 'Verified RP names can only be changed through support');
+    const expectedNickname = record?.rp_name && record?.roblox_username
+      ? formatVerifiedNickname(record.rp_name, record.roblox_username)
+      : null;
+    if (expectedNickname && newMember.nickname !== expectedNickname && newMember.manageable) {
+      await newMember.setNickname(expectedNickname, 'Verified RP names can only be changed through support');
     }
   } catch (error) {
     console.error('Could not enforce verified RP name:', error);
@@ -629,7 +633,7 @@ async function handleVerify(interaction) {
     components: [
       { type: 1, components: [{ type: 4, custom_id: 'rp-first-name', label: 'What would you like your RP name to be?', style: 1, placeholder: 'First name only, such as Jordan', min_length: 2, max_length: 20, required: true }] },
       { type: 1, components: [{ type: 4, custom_id: 'rp-last-initial', label: 'RP last-name initial', style: 1, placeholder: 'One letter, such as S', min_length: 1, max_length: 2, required: true }] },
-      { type: 1, components: [{ type: 4, custom_id: 'rp-confirmation', label: 'Confirm this is NOT your real name', style: 1, placeholder: 'Type I CONFIRM', min_length: 9, max_length: 9, required: true }] },
+      { type: 1, components: [{ type: 4, custom_id: 'rp-confirmation', label: 'Confirm this is NOT your real name', style: 1, placeholder: 'Type CONFIRMED', min_length: 9, max_length: 9, required: true }] },
     ],
   });
 }
@@ -673,6 +677,7 @@ async function handleUpdate(interaction) {
       requestedRole,
       botMember,
       executiveRoleId: config.executiveRoleId,
+      allowedRoleIds: config.updateAllowedRoleIds,
     });
     if (!validation.ok) {
       await interaction.editReply({ embeds: [validation.embed] });
@@ -715,6 +720,9 @@ async function handleGetRole(interaction) {
     ]);
     const guildConfig = await effectiveGuildConfig(interaction.guildId);
     await database.saveVerification({ discordUserId: member.id, robloxUserId: record.roblox_user_id, robloxUsername: currentUser.name });
+    if (record.rp_name && member.manageable) {
+      await member.setNickname(formatVerifiedNickname(record.rp_name, currentUser.name), 'Refresh verified Roblox username');
+    }
     const verifiedRole = guildConfig.verifiedRoleId ? await interaction.guild.roles.fetch(guildConfig.verifiedRoleId) : null;
     if (verifiedRole && !member.roles.cache.has(verifiedRole.id)) await member.roles.add(verifiedRole, 'Restore verified role');
     const result = await roleSync.sync(member, record.roblox_user_id, guildConfig);
@@ -784,13 +792,40 @@ async function handleVerificationConfig(interaction) {
     await interaction.reply({ content: 'You need **Manage Server** to configure verification.', ephemeral: true });
     return;
   }
-  if (!database.configured) {
-    await interaction.reply({ content: 'Configure `DATABASE_URL` before using verification configuration.', ephemeral: true });
-    return;
-  }
   await interaction.deferReply({ ephemeral: true });
   try {
     const subcommand = interaction.options.getSubcommand();
+    let databaseConnected = false;
+    if (database.configured) {
+      try { databaseConnected = await database.ping(); } catch (error) { console.error('Verification database check failed:', error); }
+    }
+    if (subcommand === 'status') {
+      const oauthReady = Boolean(config.robloxOauthClientId
+        && config.robloxOauthClientSecret && config.robloxOauthRedirectUri);
+      const missingOAuth = verification.configurationIssues().filter((name) => name !== 'DATABASE_URL');
+      await interaction.editReply({ embeds: [{
+        color: databaseConnected && oauthReady ? 0x2E8540 : 0xC8102E,
+        title: '🔎 Verification System Status',
+        fields: [
+          { name: 'PostgreSQL', value: databaseConnected ? '✅ Connected' : '❌ Not connected', inline: true },
+          { name: 'Roblox OAuth', value: oauthReady ? '✅ Configured' : '❌ Missing environment variables', inline: true },
+        ],
+        description: !databaseConnected
+          ? 'On Render, create or link a PostgreSQL database, set `DATABASE_URL` to its **Internal Database URL**, and redeploy. Database credentials cannot be entered through Discord.'
+          : missingOAuth.length
+            ? `Add these Render environment variables, then redeploy: ${missingOAuth.map((name) => `\`${name}\``).join(', ')}.`
+            : 'The database and Roblox OAuth environment are ready. Use `/verification-config set` for this server’s roles and Roblox group.',
+      }] });
+      return;
+    }
+    if (!databaseConnected) {
+      await interaction.editReply({ embeds: [{
+        color: 0xC8102E,
+        title: '❌ PostgreSQL Not Connected',
+        description: 'Verification records and settings require persistent storage. On Render, create or link a PostgreSQL database, set `DATABASE_URL` to its **Internal Database URL**, then redeploy. For security, database credentials cannot be configured through a Discord command. Run `/verification-config status` afterward.',
+      }] });
+      return;
+    }
     if (subcommand === 'set') {
       const verifiedRole = interaction.options.getRole('verified-role', true);
       const unverifiedRole = interaction.options.getRole('unverified-role', true);

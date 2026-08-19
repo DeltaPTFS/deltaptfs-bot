@@ -52,6 +52,16 @@ test('allows callers whose highest role equals or exceeds Executives', () => {
   assert.equal(validateRoleUpdate(above).ok, true);
 });
 
+test('allows the two additional configured update roles below Executives', () => {
+  for (const allowedRoleId of ['1539005023995043880', '1539005027748945971']) {
+    const input = scenario({ caller: {
+      roles: { highest: role('lower-authorized', 40), cache: new Map([[allowedRoleId, role(allowedRoleId, 40)]]) },
+    } });
+    input.allowedRoleIds = [allowedRoleId];
+    assert.equal(validateRoleUpdate(input).ok, true);
+  }
+});
+
 test('denies callers below Executives before other validation', () => {
   const input = scenario({
     caller: { roles: { highest: role('low', 49) } },
