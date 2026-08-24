@@ -35,7 +35,7 @@ function scenario(overrides = {}) {
   };
 }
 
-test('/update uses direct user and role options without a Roblox subcommand', () => {
+test('/update offers add and remove actions without a Roblox subcommand', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
   const command = source.slice(
     source.indexOf('const updateCommand'),
@@ -43,6 +43,8 @@ test('/update uses direct user and role options without a Roblox subcommand', ()
   );
   assert.match(command, /addUserOption/);
   assert.match(command, /addRoleOption/);
+  assert.match(command, /setName\('action'\)/);
+  assert.match(command, /Remove role/);
   assert.doesNotMatch(command, /addSubcommand|roblox-username|user-role/);
 });
 
@@ -91,4 +93,21 @@ test('reports existing roles and builds the requested confirmation embed', () =>
   const embed = successEmbed(input.target, input.requestedRole, input.caller);
   assert.equal(embed.title, '✅ Member Updated');
   assert.deepEqual(embed.fields.map(({ name }) => name), ['Member', 'Role Added', 'Updated By']);
+
+  input.target.roles.cache.clear();
+  assert.equal(validateRoleUpdate({ ...input, action: 'remove' }).embed.title, 'ℹ️ No Changes Required');
+  input.target.roles.cache.set(input.requestedRole.id, input.requestedRole);
+  assert.equal(validateRoleUpdate({ ...input, action: 'remove' }).ok, true);
+  const removedEmbed = successEmbed(input.target, input.requestedRole, input.caller, 'remove');
+  assert.deepEqual(removedEmbed.fields.map(({ name }) => name), ['Member', 'Role Removed', 'Updated By']);
+});
+
+test('remove action displays the target member roles and handles a secure selection', () => {
+  const source = fs.readFileSync('src/index.js', 'utf8');
+  assert.match(source, /custom_id: `update-remove:\$\{target\.id\}`/);
+  assert.match(source, /options: removableRoles\.map/);
+  assert.match(source, /interaction\.isStringSelectMenu\(\)/);
+  assert.match(source, /handleUpdateRemoveSelect/);
+  assert.match(source, /action: 'ROLE_REMOVE'/);
+  assert.match(source, /await target\.roles\.remove/);
 });

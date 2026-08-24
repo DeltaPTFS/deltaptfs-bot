@@ -107,9 +107,13 @@ for (const message of INFO_MESSAGES) {
 
 const updateCommand = new SlashCommandBuilder()
   .setName('update')
-  .setDescription('Assign a managed role to a member (Executives and higher)')
+  .setDescription('Add or remove a member role (Executives and higher)')
   .addUserOption((option) => option.setName('user').setDescription('Discord member to update').setRequired(true))
-  .addRoleOption((option) => option.setName('role').setDescription('Role to add').setRequired(true));
+  .addStringOption((option) => option.setName('action').setDescription('Add a role or view and remove one of the member’s roles').addChoices(
+    { name: 'Add role', value: 'add' },
+    { name: 'Remove role', value: 'remove' },
+  ))
+  .addRoleOption((option) => option.setName('role').setDescription('Role to add/remove; omit when removing to see the member’s roles'));
 
 const getRoleCommand = new SlashCommandBuilder()
   .setName('getrole')
@@ -688,7 +692,40 @@ async function handleUpdate(interaction) {
       interaction.guild.members.fetch(interaction.options.getUser('user', true).id),
       interaction.guild.members.fetchMe(),
     ]);
-    const requestedRole = interaction.options.getRole('role', true);
+    const action = interaction.options.getString('action') ?? 'add';
+    const requestedRole = interaction.options.getRole('role');
+    if (action === 'remove' && !requestedRole) {
+      const access = validateExecutiveAccess(interaction.guild, caller, config.executiveRoleId, 'update', config.updateAllowedRoleIds);
+      if (!access.ok) {
+        await interaction.editReply({ embeds: [access.embed] });
+        return;
+      }
+      const removableRoles = [...target.roles.cache.values()]
+        .filter((role) => role.id !== interaction.guild.roles.everyone.id && !role.managed
+          && role.position < caller.roles.highest.position && role.position < botMember.roles.highest.position)
+        .sort((a, b) => b.position - a.position)
+        .slice(0, 25);
+      if (!removableRoles.length) {
+        await interaction.editReply({ embeds: [{ color: 0x236192, title: 'ℹ️ No Removable Roles', description: `${target} has no roles that you and the bot are allowed to remove.` }] });
+        return;
+      }
+      await interaction.editReply({
+        content: `Select a role currently held by ${target}. Only roles below both your highest role and my highest role are shown.`,
+        components: [{ type: 1, components: [{
+          type: 3,
+          custom_id: `update-remove:${target.id}`,
+          placeholder: 'Choose a role to remove',
+          min_values: 1,
+          max_values: 1,
+          options: removableRoles.map((role) => ({ label: role.name.slice(0, 100), value: role.id })),
+        }] }],
+      });
+      return;
+    }
+    if (!requestedRole) {
+      await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Role Required', description: 'Choose a role to add, or choose **Remove role** to view the member’s current removable roles.' }] });
+      return;
+    }
     const validation = validateRoleUpdate({
       guild: interaction.guild,
       caller,
@@ -697,26 +734,72 @@ async function handleUpdate(interaction) {
       botMember,
       executiveRoleId: config.executiveRoleId,
       allowedRoleIds: config.updateAllowedRoleIds,
+      action,
     });
     if (!validation.ok) {
       await interaction.editReply({ embeds: [validation.embed] });
       return;
     }
 
-    await target.roles.add(requestedRole, `Role update requested by ${interaction.user.tag}`);
-    const embed = successEmbed(target, requestedRole, caller);
+    await target.roles[action](requestedRole, `Role ${action} requested by ${interaction.user.tag}`);
+    const embed = successEmbed(target, requestedRole, caller, action);
     await recordAudit(interaction, {
       targetId: target.id, targetUsername: target.user.tag,
       executorId: caller.id, executorUsername: caller.user.tag,
-      roleId: requestedRole.id, roleName: requestedRole.name, action: 'ROLE_ADD',
+      roleId: requestedRole.id, roleName: requestedRole.name, action: action === 'remove' ? 'ROLE_REMOVE' : 'ROLE_ADD',
     }, embed);
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('Discord role update failed:', error);
     await interaction.editReply({ embeds: [{
       color: 0xC8102E,
-      title: '❌ Unable to Assign Role',
-      description: `Discord could not assign the requested role: ${String(error.message || error).slice(0, 500)}`,
+      title: '❌ Unable to Update Role',
+      description: `Discord could not update the requested role: ${String(error.message || error).slice(0, 500)}`,
+    }] });
+  }
+}
+
+async function handleUpdateRemoveSelect(interaction) {
+  await interaction.deferUpdate();
+  try {
+    await interaction.guild.roles.fetch();
+    const targetId = interaction.customId.slice('update-remove:'.length);
+    const requestedRoleId = interaction.values[0];
+    const [caller, target, botMember, requestedRole] = await Promise.all([
+      interaction.guild.members.fetch(interaction.user.id),
+      interaction.guild.members.fetch(targetId),
+      interaction.guild.members.fetchMe(),
+      interaction.guild.roles.fetch(requestedRoleId),
+    ]);
+    if (!requestedRole) throw new Error('The selected role no longer exists.');
+    const validation = validateRoleUpdate({
+      guild: interaction.guild,
+      caller,
+      target,
+      requestedRole,
+      botMember,
+      executiveRoleId: config.executiveRoleId,
+      allowedRoleIds: config.updateAllowedRoleIds,
+      action: 'remove',
+    });
+    if (!validation.ok) {
+      await interaction.editReply({ content: null, components: [], embeds: [validation.embed] });
+      return;
+    }
+    await target.roles.remove(requestedRole, `Role removal requested by ${interaction.user.tag}`);
+    const embed = successEmbed(target, requestedRole, caller, 'remove');
+    await recordAudit(interaction, {
+      targetId: target.id, targetUsername: target.user.tag,
+      executorId: caller.id, executorUsername: caller.user.tag,
+      roleId: requestedRole.id, roleName: requestedRole.name, action: 'ROLE_REMOVE',
+    }, embed);
+    await interaction.editReply({ content: null, components: [], embeds: [embed] });
+  } catch (error) {
+    console.error('Discord role removal failed:', error);
+    await interaction.editReply({ content: null, components: [], embeds: [{
+      color: 0xC8102E,
+      title: '❌ Unable to Remove Role',
+      description: `Discord could not remove the requested role: ${String(error.message || error).slice(0, 500)}`,
     }] });
   }
 }
@@ -902,6 +985,10 @@ async function handleAuthenticationConfig(interaction) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('update-remove:')) {
+    await handleUpdateRemoveSelect(interaction);
+    return;
+  }
   if (interaction.isButton() && interaction.customId === 'authentication-panel:start') {
     if (!correctGuild(interaction)) {
       await interaction.reply({ content: 'Use authentication in the configured Delta Air Lines server.', ephemeral: true });

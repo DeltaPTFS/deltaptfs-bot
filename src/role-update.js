@@ -13,46 +13,49 @@ function validateExecutiveAccess(guild, caller, executiveRoleId, commandName = '
   return { ok: true };
 }
 
-function validateRoleUpdate({ guild, caller, target, requestedRole, botMember, executiveRoleId, allowedRoleIds = [] }) {
+function validateRoleUpdate({ guild, caller, target, requestedRole, botMember, executiveRoleId, allowedRoleIds = [], action = 'add' }) {
   const access = validateExecutiveAccess(guild, caller, executiveRoleId, 'update', allowedRoleIds);
   if (!access.ok) return access;
 
   if (requestedRole.id === guild.roles.everyone.id) {
-    return result('❌ Unable to Assign Role', '`@everyone` cannot be assigned with this command.');
+    return result('❌ Unable to Update Role', '`@everyone` cannot be changed with this command.');
   }
 
   if (requestedRole.managed) {
-    return result('❌ Unable to Assign Role', `${requestedRole} is managed by Discord or an integration and cannot be assigned manually.`);
+    return result('❌ Unable to Update Role', `${requestedRole} is managed by Discord or an integration and cannot be changed manually.`);
   }
 
   if (requestedRole.position >= caller.roles.highest.position) {
     return result(
       '❌ Insufficient Permissions',
-      `You cannot assign ${requestedRole} because that role is equal to or higher than your highest role.`,
+      `You cannot ${action} ${requestedRole} because that role is equal to or higher than your highest role.`,
     );
   }
 
   if (requestedRole.position >= botMember.roles.highest.position) {
     return result(
-      '❌ Unable to Assign Role',
-      `My Discord bot role must be positioned above ${requestedRole} before I can assign it.`,
+      '❌ Unable to Update Role',
+      `My Discord bot role must be positioned above ${requestedRole} before I can ${action} it.`,
     );
   }
 
-  if (target.roles.cache.has(requestedRole.id)) {
+  if (action === 'add' && target.roles.cache.has(requestedRole.id)) {
     return result('ℹ️ No Changes Required', `${target} already has ${requestedRole}.`, COLORS.info);
+  }
+  if (action === 'remove' && !target.roles.cache.has(requestedRole.id)) {
+    return result('ℹ️ No Changes Required', `${target} does not have ${requestedRole}.`, COLORS.info);
   }
 
   return { ok: true };
 }
 
-function successEmbed(target, requestedRole, caller) {
+function successEmbed(target, requestedRole, caller, action = 'add') {
   return {
     color: COLORS.success,
     title: '✅ Member Updated',
     fields: [
       { name: 'Member', value: `${target}`, inline: true },
-      { name: 'Role Added', value: `${requestedRole}`, inline: true },
+      { name: action === 'remove' ? 'Role Removed' : 'Role Added', value: `${requestedRole}`, inline: true },
       { name: 'Updated By', value: `${caller}`, inline: true },
     ],
   };
