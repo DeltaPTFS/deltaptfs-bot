@@ -96,9 +96,10 @@ test('a stale GUILD_ID does not block authentication when the bot has only one s
 });
 
 test('RP names require a first name, last initial, and non-real-name confirmation', () => {
-  assert.equal(validateRpName('Jordan', 's', 'CONFIRMED'), 'Jordan S.');
-  assert.throws(() => validateRpName('Jordan Smith', 'S', 'CONFIRMED'), /first name/);
-  assert.throws(() => validateRpName('Jordan', 'S', 'yes'), /not your real name/);
+  assert.equal(validateRpName('Jordan', 's.', 'CONFIRMED'), 'Jordan S.');
+  assert.throws(() => validateRpName('Jordan', 'S', 'CONFIRMED'), /with a period/);
+  assert.throws(() => validateRpName('Jordan Smith', 'S.', 'CONFIRMED'), /first name/);
+  assert.throws(() => validateRpName('Jordan', 'S.', 'yes'), /not your real name/);
 });
 
 

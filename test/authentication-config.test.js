@@ -21,6 +21,8 @@ test('/authenticate displays an RP-name modal before beginning OAuth', () => {
   assert.match(source, /What would you like your RP name to be\?/);
   assert.match(source, /Confirm this is NOT your real name/);
   assert.match(source, /Type CONFIRMED/);
+  assert.match(source, /Initial Must End in a Period/);
+  assert.match(source, /Include the period, such as S\./);
   assert.match(source, /interaction\.showModal/);
   assert.match(source, /handleAuthenticateModal/);
   assert.match(source, /Events\.GuildMemberUpdate/);

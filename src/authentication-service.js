@@ -12,10 +12,11 @@ function html(response, status, title, message) {
 
 function validateRpName(firstName, lastInitial, confirmation) {
   const first = firstName.trim();
-  const initial = lastInitial.trim().replace(/\.$/, '').toUpperCase();
-  if (!/^[A-Za-z][A-Za-z'-]{1,19}$/.test(first) || !/^[A-Z]$/.test(initial)) {
-    throw new Error('Use an RP first name followed by one last-name initial, such as Jordan S.');
+  const suppliedInitial = lastInitial.trim();
+  if (!/^[A-Za-z][A-Za-z'-]{1,19}$/.test(first) || !/^[A-Za-z]\.$/.test(suppliedInitial)) {
+    throw new Error('Use an RP first name and one last-name initial with a period, such as Jordan S.');
   }
+  const initial = suppliedInitial[0].toUpperCase();
   if (confirmation.trim().toUpperCase() !== 'CONFIRMED') {
     throw new Error('You must confirm that the RP name is not your real name.');
   }

@@ -23,6 +23,7 @@ const { createDatabase } = require('./database');
 const { createRobloxService } = require('./roblox-service');
 const { createRoleSyncService } = require('./role-sync');
 const { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
+const { authenticationPanelPayload } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
@@ -141,6 +142,11 @@ const authenticationConfigCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) => subcommand.setName('mapping-remove').setDescription('Remove a Roblox role mapping')
     .addStringOption((option) => option.setName('roblox-role-id').setDescription('Numeric Roblox group-role ID').setRequired(true))
     .addRoleOption((option) => option.setName('discord-role').setDescription('Specific mapped role; omit to remove all mappings')));
+
+const authenticationPanelCommand = new SlashCommandBuilder()
+  .setName('authentication-panel')
+  .setDescription('Post the Delta Air Lines authentication panel')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -512,7 +518,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     await readyClient.application.commands.set([
       setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
-      authenticationConfigCommand.toJSON(),
+      authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(),
     ]);
     health.markReady();
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
@@ -629,21 +635,32 @@ async function handleAuthenticate(interaction) {
     return;
   }
   const username = interaction.options.getString('roblox-username', true);
+  await showAuthenticationModal(interaction, username);
+}
+
+async function showAuthenticationModal(interaction, username = null) {
+  const components = [];
+  if (!username) {
+    components.push({ type: 1, components: [{ type: 4, custom_id: 'roblox-username', label: 'Roblox username', style: 1, placeholder: 'Your exact Roblox username', min_length: 3, max_length: 20, required: true }] });
+  }
+  components.push(
+    { type: 1, components: [{ type: 4, custom_id: 'rp-first-name', label: 'What would you like your RP name to be?', style: 1, placeholder: 'First name only, such as Jordan', min_length: 2, max_length: 20, required: true }] },
+    { type: 1, components: [{ type: 4, custom_id: 'rp-last-initial', label: 'Last initial — period required', style: 1, placeholder: 'Include the period, such as S.', min_length: 2, max_length: 2, required: true }] },
+    { type: 1, components: [{ type: 4, custom_id: 'rp-confirmation', label: 'Confirm this is NOT your real name', style: 1, placeholder: 'Type CONFIRMED', min_length: 9, max_length: 9, required: true }] },
+  );
   await interaction.showModal({
-    custom_id: `authenticate-rp:${username}`,
-    title: 'Choose Your Delta RP Name',
-    components: [
-      { type: 1, components: [{ type: 4, custom_id: 'rp-first-name', label: 'What would you like your RP name to be?', style: 1, placeholder: 'First name only, such as Jordan', min_length: 2, max_length: 20, required: true }] },
-      { type: 1, components: [{ type: 4, custom_id: 'rp-last-initial', label: 'RP last-name initial', style: 1, placeholder: 'One letter, such as S', min_length: 1, max_length: 2, required: true }] },
-      { type: 1, components: [{ type: 4, custom_id: 'rp-confirmation', label: 'Confirm this is NOT your real name', style: 1, placeholder: 'Type CONFIRMED', min_length: 9, max_length: 9, required: true }] },
-    ],
+    custom_id: username ? `authenticate-rp:${username}` : 'authentication-panel:details',
+    title: 'RP Name — Initial Must End in a Period',
+    components,
   });
 }
 
 async function handleAuthenticateModal(interaction) {
   await interaction.deferReply({ ephemeral: true });
   try {
-    const username = interaction.customId.slice('authenticate-rp:'.length);
+    const username = interaction.customId === 'authentication-panel:details'
+      ? interaction.fields.getTextInputValue('roblox-username').trim()
+      : interaction.customId.slice('authenticate-rp:'.length);
     const rpName = validateRpName(
       interaction.fields.getTextInputValue('rp-first-name'),
       interaction.fields.getTextInputValue('rp-last-initial'),
@@ -885,7 +902,16 @@ async function handleAuthenticationConfig(interaction) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('authenticate-rp:')) {
+  if (interaction.isButton() && interaction.customId === 'authentication-panel:start') {
+    if (!correctGuild(interaction)) {
+      await interaction.reply({ content: 'Use authentication in the configured Delta Air Lines server.', ephemeral: true });
+      return;
+    }
+    await showAuthenticationModal(interaction);
+    return;
+  }
+  if (interaction.isModalSubmit() && (interaction.customId.startsWith('authenticate-rp:')
+    || interaction.customId === 'authentication-panel:details')) {
     await handleAuthenticateModal(interaction);
     return;
   }
@@ -925,6 +951,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'authentication-config') {
     await handleAuthenticationConfig(interaction);
+    return;
+  }
+  if (interaction.commandName === 'authentication-panel') {
+    if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({ content: 'You need **Manage Server** to post the authentication panel.', ephemeral: true });
+      return;
+    }
+    if (!interaction.channel?.isTextBased()) {
+      await interaction.reply({ content: 'Run this command in a text channel.', ephemeral: true });
+      return;
+    }
+    await interaction.channel.send(authenticationPanelPayload(interaction.guild));
+    await interaction.reply({ content: 'Authentication panel posted.', ephemeral: true });
     return;
   }
   if (interaction.commandName !== 'setup') return;

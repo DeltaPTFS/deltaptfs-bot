@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.0.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.1.1** before applying the layout.
 
 ## Hosting configuration
 
@@ -211,9 +211,13 @@ OAuth client credentials and `DATABASE_URL` remain environment-only secrets and 
 
 ### `/authenticate roblox-username:Name`
 
-After the member supplies a Roblox username, the bot opens a private RP-name prompt asking **“What would you like your RP name to be?”** The member supplies an RP first name, one last-name initial, and must type `CONFIRMED` to confirm it is not their real name. Valid RP names use a format such as `Jordan S.`.
+After the member supplies a Roblox username, the bot opens a private RP-name prompt asking **“What would you like your RP name to be?”** The top of the modal states that the last initial must end in a period. The member must enter the initial and period together (for example, `S.`), and must type `CONFIRMED` to confirm the RP name is not their real name. Missing periods are rejected. Valid RP names use a format such as `Jordan S.`.
 
 The bot then resolves the Roblox username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. PostgreSQL stores the Discord ID, Roblox ID, current Roblox username, RP name, authentication time, and last-update time. A successful callback grants Authenticated, removes Unauthenticated, sets the server nickname to `Jordan S. (@RobloxUsername)`, attempts configured group-role synchronization, and privately confirms the result. RP names cannot be changed through `/authenticate` after authentication; the bot restores the stored formatted nickname if an authenticated member changes it. Members must open a support ticket for a leadership-approved change. A future support bot should update `authentications.rp_name` before applying the approved nickname.
+
+### `/authentication-panel`
+
+Members with **Manage Server** can run `/authentication-panel` in the authentication channel. The bot posts the public onboarding panel as a normal Discord message—not an embed—with one primary **Authenticate** button directly beneath it. Server custom emojis are resolved by name, and clicking the button opens a private modal for the member's Roblox username, RP first name, last initial, and `CONFIRMED` acknowledgment. Submitting that modal calls the same OAuth authentication service used by `/authenticate`; it does not create a second authentication system or role.
 
 ### `/getrole`
 
