@@ -55,8 +55,8 @@ Running `/setup mode:Preview only section:Roles and categories/channels` shows t
   @Silver Medallion | Delta Air Lines
   @SkyMiles Member | Delta Air Lines
   @━━ SKYMILES MEMBERS ━━
-  @Verified | Delta Air Lines
-  @Unverified | Delta Air Lines
+  @Authenticated | Delta Air Lines
+  @Unauthenticated | Delta Air Lines
   @Passenger | Delta Air Lines
   @Aviation Enthusiast | Delta Air Lines
   @Guest | Delta Air Lines
@@ -93,14 +93,14 @@ The same command includes this channel plan:
 
 ```text
 INFORMATION CENTER
-  # information (visible while unverified)
+  # information (visible while unauthenticated)
   # rules
   # announcements
   # help-desk
 
-VERIFICATION
-  # verify
-  # verification-help
+AUTHENTICATION
+  # authenticate
+  # authentication-help
 
 FLIGHT OPERATIONS (private)
   # flight-schedule
@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Verification categories to the top. Run `/bot-version` after deployment and confirm it reports **v3.3.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.0.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -143,16 +143,16 @@ Applying the channel layout removes every retired airport-frequency category and
 - **Runtime:** Node.js 20 or later
 - **Required:** `DISCORD_TOKEN`, `DATABASE_URL`, `ROBLOX_OAUTH_CLIENT_ID`, `ROBLOX_OAUTH_CLIENT_SECRET`, and `ROBLOX_OAUTH_REDIRECT_URI`
 - **Optional guild restriction:** `GUILD_ID`. When the bot is installed in only one server, that server is accepted automatically even if this value is empty or stale. If the bot is installed in multiple servers, commands are restricted to the configured ID.
-- **Optional environment fallbacks:** `VERIFIED_ROLE_ID`, `UNVERIFIED_ROLE_ID`, `ROBLOX_GROUP_ID`, `LOG_CHANNEL_ID`, `ROLE_MAPPINGS`, and `MANAGED_ROLE_IDS`. These non-secret settings can instead be maintained with `/verification-config`. `UPDATE_ALLOWED_ROLE_IDS` can add more roles that may run `/update`.
-- **In-game lookup security:** `VERIFICATION_API_KEY`
+- **Optional environment fallbacks:** `AUTHENTICATED_ROLE_ID`, `UNAUTHENTICATED_ROLE_ID`, `ROBLOX_GROUP_ID`, `LOG_CHANNEL_ID`, `ROLE_MAPPINGS`, and `MANAGED_ROLE_IDS`. These non-secret settings can instead be maintained with `/authentication-config`. `UPDATE_ALLOWED_ROLE_IDS` can add more roles that may run `/update`.
+- **In-game lookup security:** `AUTHENTICATION_API_KEY`
 - **Optional Sheets:** `GOOGLE_SHEETS_WEBHOOK_URL` and `GOOGLE_SHEETS_WEBHOOK_SECRET`
 - **Optional banners:** the six `INFO_*_BANNER_URL` variables shown in `.env.example`
 
-Create a Render PostgreSQL database and copy its **Internal Database URL** into the bot web service as `DATABASE_URL`, then redeploy. The bot also recognizes `POSTGRES_URL` and `POSTGRESQL_URL`, but `DATABASE_URL` is recommended. This value is a secret and intentionally cannot be entered through `/verification-config`. On startup the bot creates `verifications`, expiring `verification_sessions`, configuration/mapping tables, and `role_update_logs`. Discord and Roblox IDs use PostgreSQL `BIGINT`; Roblox usernames are retained only as current display metadata. Unique constraints prevent one Roblox account from being linked to multiple Discord accounts.
+Create a Render PostgreSQL database and copy its **Internal Database URL** into the bot web service as `DATABASE_URL`, then redeploy. The bot also recognizes `POSTGRES_URL` and `POSTGRESQL_URL`, but `DATABASE_URL` is recommended. This value is a secret and intentionally cannot be entered through `/authentication-config`. On startup the bot creates `authentications`, expiring `authentication_sessions`, configuration/mapping tables, and `role_update_logs`. Discord and Roblox IDs use PostgreSQL `BIGINT`; Roblox usernames are retained only as current display metadata. Unique constraints prevent one Roblox account from being linked to multiple Discord accounts.
 
 Create a Roblox OAuth 2.0 application with the `openid` and `profile` scopes. Its redirect URI must exactly equal `ROBLOX_OAUTH_REDIRECT_URI`, normally `https://your-render-service.onrender.com/auth/roblox/callback`. The authorization-code flow uses a cryptographically random, single-use state and PKCE S256. Secrets belong only in the hosting environment, never in source or Roblox Studio.
 
-The bot starts its HTTP server immediately. `GET /` reports startup state and `GET /health` becomes HTTP 200 after Discord command registration. Configure Render's health path as `/health`. Enable Discord's privileged **Server Members Intent**, and place the bot role above Verified, Unverified, and every mapped/managed role.
+The bot starts its HTTP server immediately. `GET /` reports startup state and `GET /health` becomes HTTP 200 after Discord command registration. Configure Render's health path as `/health`. Enable Discord's privileged **Server Members Intent**, and place the bot role above Authenticated, Unauthenticated, and every mapped/managed role.
 
 ## Use
 
@@ -195,29 +195,29 @@ INFO_ASSISTANCE_BANNER_URL=https://example.com/skyteam.png
 
 If neither a command upload nor a banner URL is available, `/info` still posts the matching text message and privately reports which banner variables need to be added. This avoids large Base64 asset conflicts like `assets/info/welcome.png.base64` and `assets/info/skyteam.png.base64`, which GitHub often cannot resolve in the web editor.
 
-## Discord ↔ Roblox verification and role management
+## Discord ↔ Roblox authentication and role management
 
-### `/verification-config`
+### `/authentication-config`
 
-Members with **Manage Server** can configure verification without editing role IDs on Render:
+Members with **Manage Server** can configure authentication without editing role IDs on Render:
 
-- `/verification-config status` checks whether PostgreSQL is reachable and whether the required Roblox OAuth environment variables exist.
-- `/verification-config set` sets the Verified role, Unverified role, Roblox group ID, and optional staff log channel.
-- `/verification-config mapping-add` maps a Roblox group-role ID to a Discord role.
-- `/verification-config mapping-remove` removes one or all mappings for a Roblox group role.
-- `/verification-config view` displays the current configuration and mappings.
+- `/authentication-config status` checks whether PostgreSQL is reachable and whether the required Roblox OAuth environment variables exist.
+- `/authentication-config set` sets the Authenticated role, Unauthenticated role, Roblox group ID, and optional staff log channel.
+- `/authentication-config mapping-add` maps a Roblox group-role ID to a Discord role.
+- `/authentication-config mapping-remove` removes one or all mappings for a Roblox group role.
+- `/authentication-config view` displays the current configuration and mappings.
 
 OAuth client credentials and `DATABASE_URL` remain environment-only secrets and are never accepted through Discord commands.
 
-### `/verify roblox-username:Name`
+### `/authenticate roblox-username:Name`
 
 After the member supplies a Roblox username, the bot opens a private RP-name prompt asking **“What would you like your RP name to be?”** The member supplies an RP first name, one last-name initial, and must type `CONFIRMED` to confirm it is not their real name. Valid RP names use a format such as `Jordan S.`.
 
-The bot then resolves the Roblox username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. PostgreSQL stores the Discord ID, Roblox ID, current Roblox username, RP name, verification time, and last-update time. A successful callback grants Verified, removes Unverified, sets the server nickname to `Jordan S. (@RobloxUsername)`, attempts configured group-role synchronization, and privately confirms the result. RP names cannot be changed through `/verify` after verification; the bot restores the stored formatted nickname if a verified member changes it. Members must open a support ticket for a leadership-approved change. A future support bot should update `verifications.rp_name` before applying the approved nickname.
+The bot then resolves the Roblox username to an immutable Roblox user ID, rejects existing Discord or Roblox links, and returns a private **Continue with Roblox** OAuth button. Typing a username is not proof: the record is created only after Roblox OAuth returns the same user ID that was originally resolved. PostgreSQL stores the Discord ID, Roblox ID, current Roblox username, RP name, authentication time, and last-update time. A successful callback grants Authenticated, removes Unauthenticated, sets the server nickname to `Jordan S. (@RobloxUsername)`, attempts configured group-role synchronization, and privately confirms the result. RP names cannot be changed through `/authenticate` after authentication; the bot restores the stored formatted nickname if an authenticated member changes it. Members must open a support ticket for a leadership-approved change. A future support bot should update `authentications.rp_name` before applying the approved nickname.
 
 ### `/getrole`
 
-Only a Discord account with a stored verification may synchronize. The bot retrieves the saved Roblox user ID, refreshes the current username, reads current group membership, maps the Roblox group-role ID through `ROLE_MAPPINGS`, adds missing mapped roles, and removes obsolete roles only from `MANAGED_ROLE_IDS`. All unrelated Discord roles remain untouched.
+Only a Discord account with a stored authentication may synchronize. The bot retrieves the saved Roblox user ID, refreshes the current username, reads current group membership, maps the Roblox group-role ID through `ROLE_MAPPINGS`, adds missing mapped roles, and removes obsolete roles only from `MANAGED_ROLE_IDS`. All unrelated Discord roles remain untouched.
 
 ### `/update user:@Member role:@Role`
 
@@ -225,12 +225,12 @@ The minimum threshold is the configured Executives role (default ID `15337182846
 
 ### `/unlink user:@Member`
 
-Executives and higher may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and Verified, grants Unverified, deletes the database record so both accounts may verify again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
+Executives and higher may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and Authenticated, grants Unauthenticated, deletes the database record so both accounts may authenticate again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
 
 ### Roblox server-side lookup API
 
-Roblox server scripts may call `GET /api/verification/{roblox_user_id}` with `x-api-key: <VERIFICATION_API_KEY>` from server-side `HttpService`. The endpoint returns only verification state and the linked IDs. Missing or incorrect credentials receive HTTP 401. Never place the Discord token, database URL, OAuth client secret, or other private credentials in Roblox Studio; only the dedicated lookup API key should be used, and only from server scripts.
+Roblox server scripts may call `GET /api/authentication/{roblox_user_id}` with `x-api-key: <AUTHENTICATION_API_KEY>` from server-side `HttpService`. The endpoint returns only authentication state and the linked IDs. Missing or incorrect credentials receive HTTP 401. Never place the Discord token, database URL, OAuth client secret, or other private credentials in Roblox Studio; only the dedicated lookup API key should be used, and only from server scripts.
 
-### Verification visibility
+### Authentication visibility
 
-New members automatically receive `Unverified | Delta Air Lines`. That role can see only `#information`, `#verify`, and `#verification-help`. Verified members have Unverified removed. Discord administrators inherently bypass channel permission overwrites.
+New members automatically receive `Unauthenticated | Delta Air Lines`. That role can see only `#information`, `#authenticate`, and `#authentication-help`. Authenticated members have Unauthenticated removed. Discord administrators inherently bypass channel permission overwrites.

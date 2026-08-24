@@ -91,8 +91,8 @@ const ROLE_GROUPS = [
     name: 'Community',
     categoryRole: { name: '━━ COMMUNITY ━━', color: '#546E7A' },
     roles: [
-      { name: 'Verified', color: '#236192' },
-      { name: 'Unverified', color: '#64748B' },
+      { name: 'Authenticated', color: '#236192' },
+      { name: 'Unauthenticated', color: '#64748B' },
       { name: 'Passenger', color: '#43A047' },
       { name: 'Aviation Enthusiast', color: '#78909C' },
       { name: 'Guest', color: '#90A4AE' },

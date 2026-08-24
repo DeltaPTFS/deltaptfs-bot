@@ -21,18 +21,18 @@ test('formatted preview includes private label and all channels', () => {
   assert.equal(preview.split('\n').filter((line) => line.startsWith('  ')).length, channelCount);
 });
 
-test('onboarding layout removes frequencies and limits unverified visibility', () => {
+test('onboarding layout removes frequencies and limits unauthenticated visibility', () => {
   assert.equal(SERVER_LAYOUT[0].name, 'INFORMATION CENTER');
-  assert.equal(SERVER_LAYOUT[1].name, 'VERIFICATION');
+  assert.equal(SERVER_LAYOUT[1].name, 'AUTHENTICATION');
   assert.deepEqual(SERVER_LAYOUT[0].channels.map(({ name }) => name), [
     'information', 'rules', 'announcements', 'help-desk',
   ]);
   assert.deepEqual(SERVER_LAYOUT[1].channels.map(({ name }) => name), [
-    'verify', 'verification-help',
+    'authenticate', 'authentication-help',
   ]);
-  assert.ok(SERVER_LAYOUT[0].channels.find(({ name }) => name === 'information').visibleToUnverified);
-  assert.ok(SERVER_LAYOUT[1].channels.every(({ visibleToUnverified }) => visibleToUnverified));
-  assert.ok(SERVER_LAYOUT.slice(2).every(({ hideFromUnverified }) => hideFromUnverified));
+  assert.ok(SERVER_LAYOUT[0].channels.find(({ name }) => name === 'information').visibleToUnauthenticated);
+  assert.ok(SERVER_LAYOUT[1].channels.every(({ visibleToUnauthenticated }) => visibleToUnauthenticated));
+  assert.ok(SERVER_LAYOUT.slice(2).every(({ hideFromUnauthenticated }) => hideFromUnauthenticated));
   assert.ok(!SERVER_LAYOUT.some(({ name }) => /FREQUENC|AIR TRAFFIC CONTROL/.test(name)));
   assert.ok(!SERVER_LAYOUT.flatMap(({ channels }) => channels).some(({ name }) =>
     ['roles', 'faq', 'ATC Tower'].includes(name) || /\[\d{3}\.\d{3}\]/.test(name)));

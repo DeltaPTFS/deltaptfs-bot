@@ -17,7 +17,7 @@ function createRoleSyncService({ config, roblox }) {
         throw new Error(`The bot cannot manage ${role.name}; move the bot role higher`);
       }
       if (!member.roles.cache.has(role.id)) {
-        await member.roles.add(role, 'Synchronize verified Roblox Community rank');
+        await member.roles.add(role, 'Synchronize authenticated Roblox Community rank');
         added.push(role);
       }
     }
@@ -28,7 +28,7 @@ function createRoleSyncService({ config, roblox }) {
       if (!role || role.managed || role.position >= botMember.roles.highest.position) {
         throw new Error(`The bot cannot remove managed role ${role?.name ?? roleId}`);
       }
-      await member.roles.remove(role, 'Remove obsolete verified Roblox Community rank');
+      await member.roles.remove(role, 'Remove obsolete authenticated Roblox Community rank');
       removed.push(role);
     }
 
@@ -36,7 +36,7 @@ function createRoleSyncService({ config, roblox }) {
   }
 
   async function removeManaged(member, effectiveConfig = config) {
-    const ids = new Set([...effectiveConfig.managedRoleIds, ...(effectiveConfig.verifiedRoleId ? [effectiveConfig.verifiedRoleId] : [])]);
+    const ids = new Set([...effectiveConfig.managedRoleIds, ...(effectiveConfig.authenticatedRoleId ? [effectiveConfig.authenticatedRoleId] : [])]);
     const botMember = member.guild.members.me ?? await member.guild.members.fetchMe();
     const removed = [];
     for (const roleId of ids) {
@@ -45,7 +45,7 @@ function createRoleSyncService({ config, roblox }) {
       if (!role || role.managed || role.position >= botMember.roles.highest.position) {
         throw new Error(`The bot cannot remove ${role?.name ?? roleId}; move the bot role higher`);
       }
-      await member.roles.remove(role, 'Unlink Roblox verification');
+      await member.roles.remove(role, 'Unlink Roblox authentication');
       removed.push(role);
     }
     return removed;

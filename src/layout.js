@@ -35,23 +35,24 @@ const SERVER_LAYOUT = [
     name: 'INFORMATION CENTER',
     legacyNames: ['WELCOME CENTER'],
     channels: [
-      { name: 'information', legacyNames: ['welcome'], topic: 'Welcome to Delta Airlines.', visibleToUnverified: true },
+      { name: 'information', legacyNames: ['welcome'], topic: 'Welcome to Delta Airlines.', visibleToUnauthenticated: true },
       { name: 'rules', topic: 'Read the server rules before participating.' },
       { name: 'announcements', topic: 'Official Delta Airlines news and updates.' },
       { name: 'help-desk', legacyCategory: 'SUPPORT', topic: 'Ask for help with the server or an upcoming flight.' },
     ],
   },
   {
-    name: 'VERIFICATION',
-    visibleToUnverified: true,
+    name: 'AUTHENTICATION',
+    legacyNames: ['VERIFICATION'],
+    visibleToUnauthenticated: true,
     channels: [
-      { name: 'verify', topic: 'Complete the Delta Airlines verification process here.', visibleToUnverified: true },
-      { name: 'verification-help', topic: 'Request assistance if you cannot complete verification.', visibleToUnverified: true },
+      { name: 'authenticate', legacyNames: ['verify'], topic: 'Complete the Delta Airlines authentication process here.', visibleToUnauthenticated: true },
+      { name: 'authentication-help', legacyNames: ['verification-help'], topic: 'Request assistance if you cannot complete authentication.', visibleToUnauthenticated: true },
     ],
   },
   {
     name: 'FLIGHT OPERATIONS',
-    hideFromUnverified: true,
+    hideFromUnauthenticated: true,
     accessRoles: OPERATIONAL_ACCESS_ROLES,
     channels: [
       { name: 'flight-schedule', topic: 'Upcoming scheduled flights and events.' },
@@ -63,7 +64,7 @@ const SERVER_LAYOUT = [
   },
   {
     name: 'COMMUNITY',
-    hideFromUnverified: true,
+    hideFromUnauthenticated: true,
     channels: [
       { name: 'general', topic: 'The main community conversation.' },
       { name: 'aviation-chat', topic: 'Discuss PTFS and real-world aviation.' },
@@ -74,7 +75,7 @@ const SERVER_LAYOUT = [
   },
   {
     name: 'CREW OPERATIONS',
-    hideFromUnverified: true,
+    hideFromUnauthenticated: true,
     accessRoles: OPERATIONAL_ACCESS_ROLES,
     channels: [
       { name: 'pilot-briefing', topic: 'Flight plans and briefings for the flight crew.' },
@@ -86,14 +87,14 @@ const SERVER_LAYOUT = [
   },
   {
     name: 'SUPPORT',
-    hideFromUnverified: true,
+    hideFromUnauthenticated: true,
     channels: [
       { name: 'suggestions', topic: 'Share suggestions for Delta Airlines.' },
     ],
   },
   {
     name: 'VOICE CHANNELS',
-    hideFromUnverified: true,
+    hideFromUnauthenticated: true,
     channels: [
       { name: 'Pre-flight Briefing', type: 'voice' },
       { name: 'Gate A', type: 'voice' },

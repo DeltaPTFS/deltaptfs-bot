@@ -20,10 +20,10 @@ test('rejects malformed role mappings', () => {
 test('stored guild configuration overrides core roles and extends environment mappings', () => {
   const base = loadConfig({ ROLE_MAPPINGS: '{"10":"100"}', MANAGED_ROLE_IDS: '[]' });
   const merged = mergeGuildConfig(base, {
-    verifiedRoleId: 'verified', unverifiedRoleId: 'unverified', robloxGroupId: '50',
+    authenticatedRoleId: 'authenticated', unauthenticatedRoleId: 'unauthenticated', robloxGroupId: '50',
     roleMappings: { 20: ['200'] }, managedRoleIds: ['200'],
   });
-  assert.equal(merged.verifiedRoleId, 'verified');
+  assert.equal(merged.authenticatedRoleId, 'authenticated');
   assert.deepEqual(merged.roleMappings, { 10: ['100'], 20: ['200'] });
   assert.deepEqual(merged.managedRoleIds, ['100', '200']);
 });
