@@ -1,6 +1,6 @@
 {
   "name": "delta-air-lines-ptfs-bot",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "private": true,
   "description": "Discord server setup bot for Delta Airlines",
   "main": "src/index.js",

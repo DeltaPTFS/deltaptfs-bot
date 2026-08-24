@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.2.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.3.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -219,13 +219,17 @@ The bot then resolves the Roblox username to an immutable Roblox user ID, reject
 
 Members with **Manage Server** can run `/authentication-panel` in the authentication channel. The bot posts five public normal messages—not embeds—in the requested banner and instruction order. The welcome and middle banners are standalone messages; each instruction section uses the supplied bottom-banner URL. The third message has the single primary **Authenticate** button directly beneath it. Server custom emojis are resolved by name, and clicking the button opens a private modal for the member's Roblox username, RP first name, last initial, and `CONFIRMED` acknowledgment. Submitting that modal calls the same OAuth authentication service used by `/authenticate`; it does not create a second authentication system or role.
 
+The command acknowledges Discord before posting the five-message sequence, preventing the interaction from timing out while Discord processes banner previews. The bot refreshes the server emoji cache before composing the messages. It needs **View Channel**, **Send Messages**, **Embed Links**, and **Use External Emojis** in the destination channel; if Discord rejects a post, the private command response now reports the actual error.
+
 ### `/getrole`
 
 Only a Discord account with a stored authentication may synchronize. The bot retrieves the saved Roblox user ID, refreshes the current username, reads current group membership, maps the Roblox group-role ID through `ROLE_MAPPINGS`, adds missing mapped roles, and removes obsolete roles only from `MANAGED_ROLE_IDS`. All unrelated Discord roles remain untouched.
 
-### `/update user:@Member role:@Role`
+### `/update user:@Member action:Add role role:@Role`
 
-The minimum threshold is the configured Executives role (default ID `1533718284615291042`). Authorization compares positions, so any highest role at or above Executives qualifies. Members holding role `1539005023995043880` or `1539005027748945971` may also run `/update`; more exceptions can be supplied through `UPDATE_ALLOWED_ROLE_IDS`. All callers still cannot assign a role equal to or above their own highest role. Validation rejects the wrong guild, `@everyone`, managed integration roles, roles equal to or above the caller, roles equal to or above the bot, and roles already held. It adds only the selected role. Every success is written to `role_update_logs`, printed to the service log, and—when `LOG_CHANNEL_ID` is configured—posted as an embed.
+The minimum threshold is the configured Executives role (default ID `1533718284615291042`). Authorization compares positions, so any highest role at or above Executives qualifies. Members holding role `1539005023995043880` or `1539005027748945971` may also run `/update`; more exceptions can be supplied through `UPDATE_ALLOWED_ROLE_IDS`. All callers still cannot add or remove a role equal to or above their own highest role. Validation rejects the wrong guild, `@everyone`, managed integration roles, roles equal to or above the caller, roles equal to or above the bot, and invalid no-change requests.
+
+To remove a role, run `/update user:@Member action:Remove role`. You may select a role directly, or omit `role` to receive a private dropdown containing roles the member currently has and that both you and the bot are permitted to remove. Selecting an entry rechecks Executive access and both role hierarchies before removing it. Unrelated roles are left untouched. Every successful add or removal is written to `role_update_logs`, printed to the service log, and—when `LOG_CHANNEL_ID` is configured—posted as an embed.
 
 ### `/unlink user:@Member`
 

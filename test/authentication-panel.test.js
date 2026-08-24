@@ -37,8 +37,11 @@ test('only message three has one primary Authenticate button with the custom emo
 
 test('authentication panel command sends every message and reuses the existing flow', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
+  assert.match(source, /await interaction\.deferReply\(\{ ephemeral: true \}\)/);
+  assert.match(source, /await interaction\.guild\.emojis\.fetch\(\)\.catch/);
   assert.match(source, /const messages = authenticationPanelPayloads\(interaction\.guild\)/);
   assert.match(source, /for \(const payload of messages\) await interaction\.channel\.send\(payload\)/);
+  assert.match(source, /Make sure I have View Channel, Send Messages, Embed Links, and Use External Emojis/);
   assert.match(source, /interaction\.isButton\(\).*authentication-panel:start/);
   assert.match(source, /await showAuthenticationModal\(interaction\)/);
   assert.match(source, /const result = await authentication\.begin/);
