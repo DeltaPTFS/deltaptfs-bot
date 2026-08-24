@@ -22,8 +22,8 @@ const { loadConfig, mergeGuildConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { createRobloxService } = require('./roblox-service');
 const { createRoleSyncService } = require('./role-sync');
-const { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
-const { authenticationPanelPayload } = require('./authentication-panel');
+concst { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
+const { authenticationPanelPayloads } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
@@ -962,8 +962,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({ content: 'Run this command in a text channel.', ephemeral: true });
       return;
     }
-    await interaction.channel.send(authenticationPanelPayload(interaction.guild));
-    await interaction.reply({ content: 'Authentication panel posted.', ephemeral: true });
+    const messages = authenticationPanelPayloads(interaction.guild);
+    for (const payload of messages) await interaction.channel.send(payload);
+    await interaction.reply({ content: `Authentication panel posted as ${messages.length} messages.`, ephemeral: true });
     return;
   }
   if (interaction.commandName !== 'setup') return;

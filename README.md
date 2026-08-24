@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.1.1** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.2.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -217,7 +217,7 @@ The bot then resolves the Roblox username to an immutable Roblox user ID, reject
 
 ### `/authentication-panel`
 
-Members with **Manage Server** can run `/authentication-panel` in the authentication channel. The bot posts the public onboarding panel as a normal Discord message—not an embed—with one primary **Authenticate** button directly beneath it. Server custom emojis are resolved by name, and clicking the button opens a private modal for the member's Roblox username, RP first name, last initial, and `CONFIRMED` acknowledgment. Submitting that modal calls the same OAuth authentication service used by `/authenticate`; it does not create a second authentication system or role.
+Members with **Manage Server** can run `/authentication-panel` in the authentication channel. The bot posts five public normal messages—not embeds—in the requested banner and instruction order. The welcome and middle banners are standalone messages; each instruction section uses the supplied bottom-banner URL. The third message has the single primary **Authenticate** button directly beneath it. Server custom emojis are resolved by name, and clicking the button opens a private modal for the member's Roblox username, RP first name, last initial, and `CONFIRMED` acknowledgment. Submitting that modal calls the same OAuth authentication service used by `/authenticate`; it does not create a second authentication system or role.
 
 ### `/getrole`
 
