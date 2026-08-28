@@ -5,23 +5,21 @@ const {
   AUTHENTICATION_PANEL_MESSAGES,
   BOTTOM_BANNER_URL,
   MIDDLE_BANNER_URL,
-  PANEL_ATTACHMENTS,
   WELCOME_BANNER_URL,
   authenticationPanelPayloads,
 } = require('../src/authentication-panel');
 
-test('authentication panel is five separate normal messages with uploaded banner files', () => {
+test('authentication panel uses the five-message URL format with replacement banners', () => {
   const payloads = authenticationPanelPayloads(null);
   assert.equal(payloads.length, 5);
   assert.equal(payloads.some((payload) => 'embeds' in payload), false);
-  assert.deepEqual(payloads.map((payload) => payload.files[0]), PANEL_ATTACHMENTS);
-  assert.equal(payloads[0].files[0].attachment, WELCOME_BANNER_URL);
-  assert.equal(payloads[1].files[0].attachment, MIDDLE_BANNER_URL);
-  assert.ok(payloads.slice(2).every((payload) => payload.files[0].attachment === BOTTOM_BANNER_URL));
+  assert.equal(payloads.some((payload) => 'files' in payload), false);
+  assert.equal(payloads[0].content, WELCOME_BANNER_URL);
+  assert.equal(payloads[1].content, MIDDLE_BANNER_URL);
+  assert.ok(payloads.slice(2).every((payload) => payload.content.includes(BOTTOM_BANNER_URL)));
   assert.match(WELCOME_BANNER_URL, /1542761468502474832/);
   assert.match(MIDDLE_BANNER_URL, /1542761993327485008/);
   assert.match(BOTTOM_BANNER_URL, /1542762428389920798/);
-  assert.equal(payloads.some((payload) => payload.content?.includes('https://cdn.discordapp.com/')), false);
   assert.match(payloads[4].content, /Please visit <#1539005082308321331> for assistance\./);
   assert.match(payloads[4].content, /\*\*Verified\*\* role/);
 });
