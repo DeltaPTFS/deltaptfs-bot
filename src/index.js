@@ -23,7 +23,7 @@ const { createDatabase } = require('./database');
 const { createRobloxService } = require('./roblox-service');
 const { createRoleSyncService } = require('./role-sync');
 const { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
-const { authenticationPanelPayloads } = require('./authentication-panel');
+const { authenticationPanelPayloads, loadAuthenticationPanelImages } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { version: botVersion } = require('../package.json');
 
@@ -150,7 +150,10 @@ const authenticationConfigCommand = new SlashCommandBuilder()
 const authenticationPanelCommand = new SlashCommandBuilder()
   .setName('authentication-panel')
   .setDescription('Post the Delta Air Lines authentication panel')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addAttachmentOption((option) => option.setName('welcome-banner').setDescription('Optional replacement welcome PNG'))
+  .addAttachmentOption((option) => option.setName('middle-banner').setDescription('Optional replacement middle PNG'))
+  .addAttachmentOption((option) => option.setName('bottom-banner').setDescription('Optional replacement bottom PNG'));
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -1054,14 +1057,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.guild.emojis.fetch().catch((error) => {
         console.warn('Could not refresh authentication-panel emojis; using the current cache:', error.message);
       });
-      const messages = authenticationPanelPayloads(interaction.guild);
+      const images = await loadAuthenticationPanelImages({
+        welcome: interaction.options.getAttachment('welcome-banner')?.url,
+        middle: interaction.options.getAttachment('middle-banner')?.url,
+        bottom: interaction.options.getAttachment('bottom-banner')?.url,
+      });
+      const messages = authenticationPanelPayloads(interaction.guild, images);
       for (const payload of messages) await interaction.channel.send(payload);
       await interaction.editReply(`Authentication panel posted as ${messages.length} messages.`);
     } catch (error) {
       console.error('Could not post authentication panel:', error);
       await interaction.editReply(
         `I could not post the authentication panel: ${String(error.message || error).slice(0, 500)}. `
-        + 'Make sure I have View Channel, Send Messages, Embed Links, and Use External Emojis in this channel.',
+        + 'Make sure the banner links are current, or upload all three PNGs directly with the command. I also need View Channel, Send Messages, Attach Files, and Use External Emojis in this channel.',
       );
     }
     return;

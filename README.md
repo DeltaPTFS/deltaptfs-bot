@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.3.5** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.4.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -221,9 +221,9 @@ The bot then resolves the Roblox username to an immutable Roblox user ID, reject
 
 ### `/authentication-panel`
 
-Members with **Manage Server** can run `/authentication-panel` in the authentication channel. The bot posts five public normal messages—not embeds—using the original URL-based banner format and the current replacement image URLs. The welcome and middle banners are their own messages, while the bottom banner URL remains inside each matching instruction message. The single primary **Authenticate** button is attached to the fifth and final message, placing it at the bottom of the entire panel. Server custom emojis are resolved by name, and clicking the button opens a private modal for the member's Roblox username, RP first name, last initial, and `CONFIRMED` acknowledgment. Submitting that modal calls the same OAuth authentication service used by `/authenticate`; it does not create a second authentication system or role.
+Members with **Manage Server** can run `/authentication-panel` in the authentication channel. Before posting, the bot downloads the configured banner URLs and uploads their actual PNG bytes to Discord. This makes Discord render each banner as a visible image rather than showing a CDN link or attachment placeholder. The welcome and middle banners are standalone image messages, each instruction message has the bottom banner attached, and the single primary **Authenticate** button remains on the fifth and final message. The command also accepts optional `welcome-banner`, `middle-banner`, and `bottom-banner` uploads; use these when a signed Discord CDN URL expires. Server custom emojis are resolved by name, and the button continues into the existing authentication flow.
 
-The command acknowledges Discord before posting the five-message sequence, preventing the interaction from timing out while Discord processes banner previews. The bot refreshes the server emoji cache before composing the messages. It needs **View Channel**, **Send Messages**, **Embed Links**, and **Use External Emojis** in the destination channel; if Discord rejects a post, the private command response now reports the actual error.
+The command acknowledges Discord before posting the five-message sequence, preventing the interaction from timing out while Discord processes the images. The bot refreshes the server emoji cache before composing the messages. It needs **View Channel**, **Send Messages**, **Attach Files**, and **Use External Emojis** in the destination channel; if Discord rejects a post, the private command response reports the actual error.
 
 ### `/getrole`
 

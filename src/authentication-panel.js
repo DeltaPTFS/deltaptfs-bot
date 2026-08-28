@@ -3,8 +3,8 @@ const MIDDLE_BANNER_URL = 'https://cdn.discordapp.com/attachments/15390050813644
 const BOTTOM_BANNER_URL = 'https://cdn.discordapp.com/attachments/1539005081364471828/1542762428389920798/Delta_Airlines_Banner_Bottom.png?ex=6a9268fa&is=6a91177a&hm=3c3f460d80c28cd8bf42fab4aa0deff9bcb3e8db2e92652c94cfe58f15f0cfe9&';
 
 const AUTHENTICATION_PANEL_MESSAGES = Object.freeze([
-  WELCOME_BANNER_URL,
-  MIDDLE_BANNER_URL,
+  null,
+  null,
   `:DeltaLogo: **Authentication | :SkyTeamLogo:**
 -# :Blank: :Connection: 1021 N Outer Loop Rd, East Point, GA, 30344.
 
@@ -13,15 +13,11 @@ const AUTHENTICATION_PANEL_MESSAGES = Object.freeze([
 
 :Nametag: **Step 1 | Roleplay Name**
 
-Click the **Authenticate** button below and enter your Delta RP name when prompted. Do not use your real name. Use a realistic, made-up name that follows the server's RP naming format.
-
-${BOTTOM_BANNER_URL}`,
-  `${BOTTOM_BANNER_URL}
-:ExternalLink: **Step 2 | Roblox Authentication**
+Click the **Authenticate** button below and enter your Delta RP name when prompted. Do not use your real name. Use a realistic, made-up name that follows the server's RP naming format.`,
+  `:ExternalLink: **Step 2 | Roblox Authentication**
 
 After entering your RP name, you will be redirected to Roblox's authentication website to confirm that you own the Roblox account being connected.`,
-  `${BOTTOM_BANNER_URL}
-:DeltaLogo: **Step 3 | You're Cleared!**
+  `:DeltaLogo: **Step 3 | You're Cleared!**
 
 Once your Roblox account has been successfully authenticated, you will automatically receive the **Verified** role and gain access to the appropriate areas of the server.
 
@@ -41,7 +37,36 @@ function resolveCustomEmojis(content, guild) {
     findGuildEmoji(guild, name)?.toString() ?? token);
 }
 
-function authenticationPanelPayloads(guild) {
+async function downloadBanner(url, name, fetchImpl = global.fetch) {
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`${name} could not be downloaded (HTTP ${response.status})`);
+  const contentType = response.headers?.get?.('content-type') ?? '';
+  if (contentType && !contentType.toLowerCase().startsWith('image/')) {
+    throw new Error(`${name} did not return an image`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) throw new Error(`${name} was empty`);
+  return buffer;
+}
+
+async function loadAuthenticationPanelImages(urls = {}, fetchImpl = global.fetch) {
+  const sources = {
+    welcome: urls.welcome || WELCOME_BANNER_URL,
+    middle: urls.middle || MIDDLE_BANNER_URL,
+    bottom: urls.bottom || BOTTOM_BANNER_URL,
+  };
+  const [welcome, middle, bottom] = await Promise.all([
+    downloadBanner(sources.welcome, 'Welcome banner', fetchImpl),
+    downloadBanner(sources.middle, 'Middle banner', fetchImpl),
+    downloadBanner(sources.bottom, 'Bottom banner', fetchImpl),
+  ]);
+  return { welcome, middle, bottom };
+}
+
+function authenticationPanelPayloads(guild, images) {
+  if (!images?.welcome || !images?.middle || !images?.bottom) {
+    throw new Error('Authentication panel image data is required');
+  }
   const externalLink = findGuildEmoji(guild, 'ExternalLink');
   const button = {
     type: 2,
@@ -51,8 +76,16 @@ function authenticationPanelPayloads(guild) {
   };
   if (externalLink) button.emoji = { id: externalLink.id, name: externalLink.name };
 
+  const files = [
+    { attachment: images.welcome, name: 'Delta_Airlines_Banner_Welcome_Onboard.png' },
+    { attachment: images.middle, name: 'Delta_Airlines_Banner_Middle.png' },
+    { attachment: images.bottom, name: 'Delta_Airlines_Banner_Bottom_Step_1.png' },
+    { attachment: images.bottom, name: 'Delta_Airlines_Banner_Bottom_Step_2.png' },
+    { attachment: images.bottom, name: 'Delta_Airlines_Banner_Bottom_Step_3.png' },
+  ];
   return AUTHENTICATION_PANEL_MESSAGES.map((content, index) => ({
-    content: resolveCustomEmojis(content, guild),
+    ...(content ? { content: resolveCustomEmojis(content, guild) } : {}),
+    files: [files[index]],
     ...(index === 4 ? { components: [{ type: 1, components: [button] }] } : {}),
   }));
 }
@@ -63,4 +96,6 @@ module.exports = {
   MIDDLE_BANNER_URL,
   WELCOME_BANNER_URL,
   authenticationPanelPayloads,
+  downloadBanner,
+  loadAuthenticationPanelImages,
 };
