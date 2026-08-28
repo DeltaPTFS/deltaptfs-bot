@@ -14,6 +14,8 @@ test('/authentication-config exposes core and role-mapping administration', () =
   assert.match(source, /addRoleMapping/);
   assert.match(source, /removeRoleMapping/);
   assert.match(source, /Internal Database URL/);
+  assert.match(source, /Required Roblox Scopes/);
+  assert.match(source, /enable both `openid` and `profile`/);
 });
 
 test('/authenticate displays an RP-name modal before beginning OAuth', () => {

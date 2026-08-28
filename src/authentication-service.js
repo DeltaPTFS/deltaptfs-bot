@@ -5,6 +5,27 @@ const hashState = (state) => createHash('sha256').update(state).digest('hex');
 const base64UrlHash = (value) => createHash('sha256').update(value).digest('base64url');
 const formatAuthenticatedNickname = (rpName, robloxUsername) => `${rpName} (@${robloxUsername})`;
 
+function validateOAuthRedirectUri(value) {
+  if (!value) return null;
+  let redirect;
+  try {
+    redirect = new URL(value);
+  } catch {
+    return 'ROBLOX_OAUTH_REDIRECT_URI is not a valid URL';
+  }
+  const localDevelopment = ['localhost', '127.0.0.1'].includes(redirect.hostname);
+  if (redirect.protocol !== 'https:' && !localDevelopment) {
+    return 'ROBLOX_OAUTH_REDIRECT_URI must use HTTPS';
+  }
+  if (redirect.hostname === 'discord.com' || redirect.hostname.endsWith('.discord.com')) {
+    return 'ROBLOX_OAUTH_REDIRECT_URI must be your bot website, not a Discord channel URL';
+  }
+  if (redirect.pathname !== '/auth/roblox/callback' || redirect.search || redirect.hash) {
+    return 'ROBLOX_OAUTH_REDIRECT_URI must end exactly with /auth/roblox/callback';
+  }
+  return null;
+}
+
 function html(response, status, title, message) {
   response.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
   response.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>${title}</title></head><body style="font-family:system-ui;background:#071D49;color:#fff;padding:3rem"><h1>${title}</h1><p>${message}</p><p>You may close this page and return to Discord.</p></body></html>`);
@@ -25,11 +46,13 @@ function validateRpName(firstName, lastInitial, confirmation) {
 
 function createAuthenticationService({ config, database, roblox, roleSync, client, getGuildConfig = async () => config, fetchImpl = global.fetch }) {
   function configurationIssues() {
+    const redirectIssue = validateOAuthRedirectUri(config.robloxOauthRedirectUri);
     return [
       !database.configured && 'DATABASE_URL',
       !config.robloxOauthClientId && 'ROBLOX_OAUTH_CLIENT_ID',
       !config.robloxOauthClientSecret && 'ROBLOX_OAUTH_CLIENT_SECRET',
       !config.robloxOauthRedirectUri && 'ROBLOX_OAUTH_REDIRECT_URI',
+      redirectIssue,
     ].filter(Boolean);
   }
 
@@ -38,9 +61,9 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
   }
 
   async function begin(discordUserId, guildId, username, rpName) {
-    const missing = configurationIssues();
-    if (missing.length) {
-      throw new Error(`Authentication setup is missing: ${missing.join(', ')}. Run \`/authentication-config status\` after updating Render.`);
+    const issues = configurationIssues();
+    if (issues.length) {
+      throw new Error(`Authentication setup is not ready: ${issues.join(', ')}. Run \`/authentication-config status\` after updating Render.`);
     }
     if (!/^[A-Za-z][A-Za-z'-]{1,19} [A-Z]\.$/.test(rpName || '')) {
       throw new Error('Choose a valid RP first name and last initial before authentication.');
@@ -186,4 +209,10 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
   return { begin, configured, configurationIssues, handleRequest };
 }
 
-module.exports = { createAuthenticationService, formatAuthenticatedNickname, hashState, validateRpName };
+module.exports = {
+  createAuthenticationService,
+  formatAuthenticatedNickname,
+  hashState,
+  validateOAuthRedirectUri,
+  validateRpName,
+};

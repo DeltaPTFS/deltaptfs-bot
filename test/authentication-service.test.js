@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { createAuthenticationService, hashState, validateRpName } = require('../src/authentication-service');
+const {
+  createAuthenticationService,
+  hashState,
+  validateOAuthRedirectUri,
+  validateRpName,
+} = require('../src/authentication-service');
 
 function responseRecorder() {
   return { writeHead(status, headers) { this.status = status; this.headers = headers; }, end(body) { this.body = body; } };
@@ -111,4 +116,14 @@ test('incomplete authentication reports the exact missing Render variables', asy
     'DATABASE_URL', 'ROBLOX_OAUTH_CLIENT_ID', 'ROBLOX_OAUTH_CLIENT_SECRET', 'ROBLOX_OAUTH_REDIRECT_URI',
   ]);
   await assert.rejects(incomplete.begin('discord', 'guild', 'DeltaPilot', 'Jordan S.'), /DATABASE_URL.*ROBLOX_OAUTH_CLIENT_ID/);
+});
+
+test('OAuth redirect URI must point to the bot callback instead of Discord', () => {
+  assert.equal(validateOAuthRedirectUri('https://delta-bot.onrender.com/auth/roblox/callback'), null);
+  assert.match(
+    validateOAuthRedirectUri('https://discord.com/channels/1538738611988467782/1539005081364471828/redirect'),
+    /bot website, not a Discord channel URL/,
+  );
+  assert.match(validateOAuthRedirectUri('https://delta-bot.onrender.com/callback'), /end exactly/);
+  assert.match(validateOAuthRedirectUri('http://delta-bot.onrender.com/auth/roblox/callback'), /HTTPS/);
 });

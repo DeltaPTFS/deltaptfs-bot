@@ -902,21 +902,21 @@ async function handleAuthenticationConfig(interaction) {
       try { databaseConnected = await database.ping(); } catch (error) { console.error('Authentication database check failed:', error); }
     }
     if (subcommand === 'status') {
-      const oauthReady = Boolean(config.robloxOauthClientId
-        && config.robloxOauthClientSecret && config.robloxOauthRedirectUri);
-      const missingOAuth = authentication.configurationIssues().filter((name) => name !== 'DATABASE_URL');
+      const oauthIssues = authentication.configurationIssues().filter((name) => name !== 'DATABASE_URL');
+      const oauthReady = oauthIssues.length === 0;
       await interaction.editReply({ embeds: [{
         color: databaseConnected && oauthReady ? 0x2E8540 : 0xC8102E,
         title: '🔎 Authentication System Status',
         fields: [
           { name: 'PostgreSQL', value: databaseConnected ? '✅ Connected' : '❌ Not connected', inline: true },
-          { name: 'Roblox OAuth', value: oauthReady ? '✅ Configured' : '❌ Missing environment variables', inline: true },
+          { name: 'Roblox OAuth', value: oauthReady ? '✅ Configured' : '❌ Configuration needs attention', inline: true },
+          { name: 'Required Roblox Scopes', value: '`openid` and `profile`', inline: false },
         ],
         description: !databaseConnected
           ? 'On Render, create or link a PostgreSQL database, set `DATABASE_URL` to its **Internal Database URL**, and redeploy. Database credentials cannot be entered through Discord.'
-          : missingOAuth.length
-            ? `Add these Render environment variables, then redeploy: ${missingOAuth.map((name) => `\`${name}\``).join(', ')}.`
-            : 'The database and Roblox OAuth environment are ready. Use `/authentication-config set` for this server’s roles and Roblox group.',
+          : oauthIssues.length
+            ? `Fix these Render environment settings, then redeploy: ${oauthIssues.map((name) => `\`${name}\``).join(', ')}. Your redirect must be the bot’s public website URL ending in \`/auth/roblox/callback\`, never a Discord channel link.`
+            : 'The bot environment is ready. In the Roblox OAuth application’s **Permissions** section, enable both `openid` and `profile`, save the application, and publish/activate it if Roblox still shows it as a draft. Then use `/authentication-config set` for this server’s roles and Roblox group.',
       }] });
       return;
     }
