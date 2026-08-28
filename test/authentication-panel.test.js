@@ -18,6 +18,9 @@ test('authentication panel is five separate normal messages with uploaded banner
   assert.equal(payloads[0].files[0].attachment, WELCOME_BANNER_URL);
   assert.equal(payloads[1].files[0].attachment, MIDDLE_BANNER_URL);
   assert.ok(payloads.slice(2).every((payload) => payload.files[0].attachment === BOTTOM_BANNER_URL));
+  assert.match(WELCOME_BANNER_URL, /1542761468502474832/);
+  assert.match(MIDDLE_BANNER_URL, /1542761993327485008/);
+  assert.match(BOTTOM_BANNER_URL, /1542762428389920798/);
   assert.equal(payloads.some((payload) => payload.content?.includes('https://cdn.discordapp.com/')), false);
   assert.match(payloads[4].content, /Please visit <#1539005082308321331> for assistance\./);
   assert.match(payloads[4].content, /\*\*Verified\*\* role/);

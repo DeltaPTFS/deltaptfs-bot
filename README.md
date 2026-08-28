@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.3.3** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.3.4** before applying the layout.
 
 ## Hosting configuration
 

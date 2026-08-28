@@ -1,6 +1,6 @@
-const WELCOME_BANNER_URL = 'https://cdn.discordapp.com/attachments/1377823784160985240/1541508890443911281/Delta_Airlines_Banner_Welcome_Onboard.png?ex=6a8dd987&is=6a8c8807&hm=d3bac14ad0a5701f97f47f8461c67808cd6dc60ef1909e1d8fe9f3aeaf62d5a0&';
-const MIDDLE_BANNER_URL = 'https://cdn.discordapp.com/attachments/1377823784160985240/1541508871233871992/Delta_Airlines_Banner_Middle.png?ex=6a8dd982&is=6a8c8802&hm=390986adfcba2a83fb83a09ea9f1a88d4a0081f602623b528ef812369d1ed5b5&';
-const BOTTOM_BANNER_URL = 'https://cdn.discordapp.com/attachments/1377823784160985240/1541509201187049502/Delta_Airlines_Banner_Bottom.png?ex=6a8dd9d1&is=6a8c8851&hm=434cdae9d94ba9aa0b385cfef854168c513587d8795821c15966c520dd1c2424&';
+const WELCOME_BANNER_URL = 'https://cdn.discordapp.com/attachments/1539005081364471828/1542761468502474832/Delta_Airlines_Banner_Welcome_Onboard.png?ex=6a926815&is=6a911695&hm=be3a7e3bcfe5c774a9557d4f9c6c287fc132be7543c702a0b7cbf8095e9cfe2b&';
+const MIDDLE_BANNER_URL = 'https://cdn.discordapp.com/attachments/1539005081364471828/1542761993327485008/Delta_Airlines_Banner_Middle.png?ex=6a926892&is=6a911712&hm=de254548fb8ef24a399bfcacce0d2bd4319e9dbfcc6d38dc2e9e46f5df3dc171&';
+const BOTTOM_BANNER_URL = 'https://cdn.discordapp.com/attachments/1539005081364471828/1542762428389920798/Delta_Airlines_Banner_Bottom.png?ex=6a9268fa&is=6a91177a&hm=3c3f460d80c28cd8bf42fab4aa0deff9bcb3e8db2e92652c94cfe58f15f0cfe9&';
 
 const AUTHENTICATION_PANEL_MESSAGES = Object.freeze([
   null,
