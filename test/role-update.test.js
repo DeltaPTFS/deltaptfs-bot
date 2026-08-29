@@ -110,4 +110,13 @@ test('remove action displays the target member roles and handles a secure select
   assert.match(source, /handleUpdateRemoveSelect/);
   assert.match(source, /action: 'ROLE_REMOVE'/);
   assert.match(source, /await target\.roles\.remove/);
+  assert.match(source, /addManualRole/);
+  assert.match(source, /removeManualRole/);
+  assert.match(source, /synchronizeAfterManualUpdate/);
+  assert.match(source, /Delta Basic detected/);
+  assert.match(source, /Authentication Required Again/);
+  assert.match(source, /wasDemotedToDeltaBasic/);
+  assert.match(source, /last_roblox_role_name/);
+  assert.match(source, /mappingFields\(mappings\)/);
+  assert.doesNotMatch(source, /mappings\.join\('\n'\)\.slice\(0, 1024\)/);
 });

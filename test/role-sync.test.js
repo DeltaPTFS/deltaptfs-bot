@@ -35,3 +35,22 @@ test('role sync adds mapped roles, removes only obsolete managed roles, and pres
   assert.deepEqual(result.added, [desired]);
   assert.deepEqual(result.removed, [obsolete]);
 });
+
+test('role sync preserves managed roles assigned manually by leadership', async () => {
+  const manual = { id: 'manual', name: 'Talent Acquisition Officer', position: 9, managed: false };
+  const cache = collection([[manual.id, manual]]);
+  const member = {
+    guild: {
+      members: { me: { roles: { highest: { position: 100 } } } },
+      roles: { cache: collection([[manual.id, manual]]), fetch: async () => manual },
+    },
+    roles: { cache, add: async () => {}, remove: async () => { throw new Error('protected role was removed'); } },
+  };
+  const service = createRoleSyncService({
+    config: { roleMappings: {}, managedRoleIds: ['manual'] },
+    roblox: { getGroupMembership: async () => ({ role: { id: 1, name: 'Flight Deck' } }) },
+  });
+  const result = await service.sync(member, '123', undefined, ['manual']);
+  assert.equal(cache.has('manual'), true);
+  assert.deepEqual(result.removed, []);
+});

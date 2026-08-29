@@ -1,11 +1,12 @@
 function createRoleSyncService({ config, roblox }) {
-  async function sync(member, robloxUserId, effectiveConfig = config) {
+  async function sync(member, robloxUserId, effectiveConfig = config, protectedRoleIds = []) {
     const membership = await roblox.getGroupMembership(robloxUserId, effectiveConfig.robloxGroupId);
     const mappedIds = membership
       ? effectiveConfig.roleMappings[String(membership.role?.id)] ?? []
       : [];
     const desiredIds = new Set(mappedIds);
     const managedIds = new Set(effectiveConfig.managedRoleIds);
+    const protectedIds = new Set(protectedRoleIds.map(String));
     const botMember = member.guild.members.me ?? await member.guild.members.fetchMe();
     const added = [];
     const removed = [];
@@ -23,7 +24,7 @@ function createRoleSyncService({ config, roblox }) {
     }
 
     for (const roleId of managedIds) {
-      if (desiredIds.has(roleId) || !member.roles.cache.has(roleId)) continue;
+      if (desiredIds.has(roleId) || protectedIds.has(String(roleId)) || !member.roles.cache.has(roleId)) continue;
       const role = member.guild.roles.cache.get(roleId) ?? await member.guild.roles.fetch(roleId);
       if (!role || role.managed || role.position >= botMember.roles.highest.position) {
         throw new Error(`The bot cannot remove managed role ${role?.name ?? roleId}`);

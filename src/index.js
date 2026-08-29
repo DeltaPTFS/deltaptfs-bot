@@ -173,6 +173,23 @@ function splitMessage(content, limit = 1900) {
   return chunks;
 }
 
+function mappingFields(lines) {
+  if (!lines.length) return [{ name: 'Role Mappings', value: 'None configured' }];
+  const chunks = [];
+  let current = '';
+  for (const line of lines) {
+    if (current && `${current}\n${line}`.length > 1024) {
+      chunks.push(current);
+      current = line;
+    } else current = current ? `${current}\n${line}` : line;
+  }
+  if (current) chunks.push(current);
+  return chunks.map((value, index) => ({
+    name: chunks.length === 1 ? 'Role Mappings' : `Role Mappings (${index + 1}/${chunks.length})`,
+    value,
+  }));
+}
+
 function categoryOverwrites(guild, categoryDefinition, rolesByName) {
   const unauthenticated = configuredRole(rolesByName, 'Unauthenticated');
   if (!categoryDefinition.accessRoles) {
@@ -745,7 +762,22 @@ async function handleUpdate(interaction) {
     }
 
     await target.roles[action](requestedRole, `Role ${action} requested by ${interaction.user.tag}`);
+    if (database.configured) {
+      if (action === 'add') await database.addManualRole(interaction.guildId, target.id, requestedRole.id, caller.id);
+      else await database.removeManualRole(interaction.guildId, target.id, requestedRole.id);
+    }
     const embed = successEmbed(target, requestedRole, caller, action);
+    const sync = await synchronizeAfterManualUpdate(target, interaction.guildId).catch((error) => ({ error }));
+    embed.fields.push({
+      name: 'Roblox Group Sync',
+      value: sync.error
+        ? `⚠️ Manual role saved, but Roblox role synchronization failed: ${String(sync.error.message || sync.error).slice(0, 300)}`
+        : sync.skipped
+          ? 'Member is not authenticated; manual Discord role was updated only.'
+          : sync.reset
+            ? 'Delta Basic detected. Authentication was reset and the member must authenticate again.'
+            : `Synchronized current Roblox rank: **${sync.membership?.role?.name ?? 'Not in group'}**. Manual role is protected.`,
+    });
     await recordAudit(interaction, {
       targetId: target.id, targetUsername: target.user.tag,
       executorId: caller.id, executorUsername: caller.user.tag,
@@ -790,7 +822,16 @@ async function handleUpdateRemoveSelect(interaction) {
       return;
     }
     await target.roles.remove(requestedRole, `Role removal requested by ${interaction.user.tag}`);
+    if (database.configured) await database.removeManualRole(interaction.guildId, target.id, requestedRole.id);
     const embed = successEmbed(target, requestedRole, caller, 'remove');
+    const sync = await synchronizeAfterManualUpdate(target, interaction.guildId).catch((error) => ({ error }));
+    embed.fields.push({
+      name: 'Roblox Group Sync',
+      value: sync.error ? `⚠️ Role removed, but Roblox role synchronization failed: ${String(sync.error.message || sync.error).slice(0, 300)}`
+        : sync.skipped ? 'Member is not authenticated; Discord role was removed only.'
+          : sync.reset ? 'Delta Basic detected. Authentication was reset.'
+            : `Synchronized current Roblox rank: **${sync.membership?.role?.name ?? 'Not in group'}**.`,
+    });
     await recordAudit(interaction, {
       targetId: target.id, targetUsername: target.user.tag,
       executorId: caller.id, executorUsername: caller.user.tag,
@@ -805,6 +846,54 @@ async function handleUpdateRemoveSelect(interaction) {
       description: `Discord could not remove the requested role: ${String(error.message || error).slice(0, 500)}`,
     }] });
   }
+}
+
+function isDeltaBasic(membership) {
+  return membership?.role?.name?.trim().toLowerCase() === 'delta basic';
+}
+
+function wasDemotedToDeltaBasic(record, membership) {
+  const previous = record?.last_roblox_role_name?.trim().toLowerCase();
+  return isDeltaBasic(membership) && Boolean(previous) && previous !== 'delta basic';
+}
+
+async function rememberRobloxRank(record, membership) {
+  await database.saveAuthentication({
+    discordUserId: record.discord_user_id,
+    robloxUserId: record.roblox_user_id,
+    robloxUsername: record.roblox_username,
+    robloxRoleId: membership?.role?.id,
+    robloxRoleName: membership?.role?.name,
+  });
+}
+
+async function resetDeltaBasicAuthentication(member, guildConfig) {
+  const removed = await roleSync.removeManaged(member, guildConfig);
+  if (guildConfig.unauthenticatedRoleId && !member.roles.cache.has(guildConfig.unauthenticatedRoleId)) {
+    const unauthenticatedRole = await member.guild.roles.fetch(guildConfig.unauthenticatedRoleId);
+    if (!unauthenticatedRole?.editable) throw new Error('The configured Unauthenticated role is not manageable by the bot');
+    await member.roles.add(unauthenticatedRole, 'Delta Basic requires renewed Roblox authentication');
+  }
+  await database.unlink(member.id);
+  await database.clearManualRoles(member.guild.id, member.id);
+  if (member.manageable) await member.setNickname(null, 'Delta Basic requires renewed Roblox authentication');
+  return removed;
+}
+
+async function synchronizeAfterManualUpdate(member, guildId) {
+  if (!database.configured) return { skipped: true };
+  const record = await database.getByDiscordId(member.id);
+  if (!record) return { skipped: true };
+  const guildConfig = await effectiveGuildConfig(guildId);
+  const membership = await roblox.getGroupMembership(record.roblox_user_id, guildConfig.robloxGroupId);
+  if (wasDemotedToDeltaBasic(record, membership)) {
+    await resetDeltaBasicAuthentication(member, guildConfig);
+    return { reset: true, membership };
+  }
+  const protectedRoleIds = await database.getManualRoleIds(guildId, member.id);
+  const result = await roleSync.sync(member, record.roblox_user_id, guildConfig, protectedRoleIds);
+  await rememberRobloxRank(record, result.membership);
+  return result;
 }
 
 async function handleGetRole(interaction) {
@@ -824,13 +913,26 @@ async function handleGetRole(interaction) {
       roblox.getUsernameFromUserId(record.roblox_user_id),
     ]);
     const guildConfig = await effectiveGuildConfig(interaction.guildId);
+    const membership = await roblox.getGroupMembership(record.roblox_user_id, guildConfig.robloxGroupId);
+    if (wasDemotedToDeltaBasic(record, membership)) {
+      const removed = await resetDeltaBasicAuthentication(member, guildConfig);
+      await interaction.editReply({ embeds: [{
+        color: 0xC8102E,
+        title: '🔐 Authentication Required Again',
+        description: 'Your Roblox group rank is **Delta Basic**. Your previous authentication and managed roles were cleared. Run `/authenticate` to complete Roblox authentication again.',
+        fields: [{ name: 'Removed Managed Roles', value: removed.length ? removed.join(', ') : 'None' }],
+      }] });
+      return;
+    }
     await database.saveAuthentication({ discordUserId: member.id, robloxUserId: record.roblox_user_id, robloxUsername: currentUser.name });
     if (record.rp_name && member.manageable) {
       await member.setNickname(formatAuthenticatedNickname(record.rp_name, currentUser.name), 'Refresh authenticated Roblox username');
     }
     const authenticatedRole = guildConfig.authenticatedRoleId ? await interaction.guild.roles.fetch(guildConfig.authenticatedRoleId) : null;
     if (authenticatedRole && !member.roles.cache.has(authenticatedRole.id)) await member.roles.add(authenticatedRole, 'Restore authenticated role');
-    const result = await roleSync.sync(member, record.roblox_user_id, guildConfig);
+    const protectedRoleIds = await database.getManualRoleIds(interaction.guildId, member.id);
+    const result = await roleSync.sync(member, record.roblox_user_id, guildConfig, protectedRoleIds);
+    await rememberRobloxRank(record, result.membership);
     await interaction.editReply({ embeds: [{
       color: 0x236192,
       title: '🎭 Role Synchronization Complete',
@@ -874,6 +976,7 @@ async function handleUnlink(interaction) {
       await target.roles.add(unauthenticatedRole, 'Roblox authentication unlinked');
     }
     await database.unlink(target.id);
+    if (database.configured) await database.clearManualRoles(interaction.guildId, target.id);
     const embed = { color: 0x2E8540, title: '✅ Authentication Unlinked', fields: [
       { name: 'Member', value: `${target}`, inline: true },
       { name: 'Roblox ID', value: String(record.roblox_user_id), inline: true },
@@ -970,17 +1073,26 @@ async function handleAuthenticationConfig(interaction) {
     }
     const mappings = Object.entries(stored.roleMappings).flatMap(([robloxRoleId, discordRoleIds]) =>
       discordRoleIds.map((discordRoleId) => `Roblox \`${robloxRoleId}\` → <@&${discordRoleId}>`));
-    await interaction.editReply({ embeds: [{
+    const roleMappingFields = mappingFields(mappings);
+    const baseFields = [
+      { name: 'Authenticated Role', value: `<@&${stored.authenticatedRoleId}>`, inline: true },
+      { name: 'Unauthenticated Role', value: `<@&${stored.unauthenticatedRoleId}>`, inline: true },
+      { name: 'Roblox Group ID', value: stored.robloxGroupId, inline: true },
+      { name: 'Log Channel', value: stored.logChannelId ? `<#${stored.logChannelId}>` : 'Not configured', inline: true },
+    ];
+    const fieldPages = [roleMappingFields.slice(0, 4)];
+    for (let index = 4; index < roleMappingFields.length; index += 5) {
+      fieldPages.push(roleMappingFields.slice(index, index + 5));
+    }
+    const mappingEmbeds = fieldPages.map((page, index) => ({
       color: 0x071D49,
-      title: subcommand === 'view' ? '⚙️ Authentication Configuration' : '✅ Authentication Configuration Updated',
-      fields: [
-        { name: 'Authenticated Role', value: `<@&${stored.authenticatedRoleId}>`, inline: true },
-        { name: 'Unauthenticated Role', value: `<@&${stored.unauthenticatedRoleId}>`, inline: true },
-        { name: 'Roblox Group ID', value: stored.robloxGroupId, inline: true },
-        { name: 'Log Channel', value: stored.logChannelId ? `<#${stored.logChannelId}>` : 'Not configured', inline: true },
-        { name: 'Role Mappings', value: mappings.join('\n').slice(0, 1024) || 'None configured' },
-      ],
-    }] });
+      title: index === 0 ? (subcommand === 'view' ? '⚙️ Authentication Configuration' : '✅ Authentication Configuration Updated') : `⚙️ Role Mappings Continued (${index + 1}/${fieldPages.length})`,
+      fields: [...(index === 0 ? baseFields : []), ...page],
+    }));
+    await interaction.editReply({ embeds: [mappingEmbeds[0]] });
+    for (const embed of mappingEmbeds.slice(1)) {
+      await interaction.followUp({ embeds: [embed], ephemeral: true });
+    }
   } catch (error) {
     console.error('Authentication configuration failed:', error);
     await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Configuration Failed', description: String(error.message || error).slice(0, 500) }] });

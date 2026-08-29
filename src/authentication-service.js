@@ -182,7 +182,19 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
         await member.roles.remove(unauthenticatedRole, `Authenticated Roblox user ${profile.sub}`);
       }
       let sync = { membership: null, added: [], removed: [] };
-      try { sync = await roleSync.sync(member, profile.sub, effectiveConfig); } catch (syncError) { console.error('Post-authentication role sync failed:', syncError); }
+      try {
+        const protectedRoleIds = database.getManualRoleIds
+          ? await database.getManualRoleIds(session.guild_id, member.id)
+          : [];
+        sync = await roleSync.sync(member, profile.sub, effectiveConfig, protectedRoleIds);
+        await database.saveAuthentication({
+          discordUserId: member.id,
+          robloxUserId: profile.sub,
+          robloxUsername: currentUser.name,
+          robloxRoleId: sync.membership?.role?.id,
+          robloxRoleName: sync.membership?.role?.name,
+        });
+      } catch (syncError) { console.error('Post-authentication role sync failed:', syncError); }
       await member.send({ embeds: [{ color: 0x2E8540, title: '✅ Authentication Complete', fields: [
         { name: 'Discord', value: `${member}`, inline: true }, { name: 'Roblox', value: currentUser.name, inline: true },
         { name: 'Roblox ID', value: String(profile.sub), inline: true }, { name: 'RP Name', value: session.rp_name, inline: true },

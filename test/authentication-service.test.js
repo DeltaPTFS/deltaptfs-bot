@@ -107,6 +107,13 @@ test('RP names require a first name, last initial, and non-real-name confirmatio
   assert.throws(() => validateRpName('Jordan', 'S.', 'yes'), /not your real name/);
 });
 
+test('authentication preserves leadership-assigned roles during initial Roblox sync', () => {
+  const source = fs.readFileSync('src/authentication-service.js', 'utf8');
+  assert.match(source, /database\.getManualRoleIds/);
+  assert.match(source, /roleSync\.sync\(member, profile\.sub, effectiveConfig, protectedRoleIds\)/);
+  assert.match(source, /robloxRoleName: sync\.membership\?\.role\?\.name/);
+});
+
 
 test('incomplete authentication reports the exact missing Render variables', async () => {
   const incomplete = createAuthenticationService({

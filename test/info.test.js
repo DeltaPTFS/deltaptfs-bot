@@ -106,7 +106,7 @@ test('info command posts standalone channel messages', () => {
   const entrypoint = fs.readFileSync('src/index.js', 'utf8');
   const handler = entrypoint.slice(
     entrypoint.indexOf('async function handleInfo'),
-    entrypoint.indexOf('client.on(Events.InteractionCreate'),
+    entrypoint.indexOf('function correctGuild'),
   );
   assert.match(handler, /interaction\.channel\.send/);
   assert.match(handler, /infoMessagePayload/);

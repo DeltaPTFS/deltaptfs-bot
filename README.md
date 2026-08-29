@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.4.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.5.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -234,6 +234,12 @@ Only a Discord account with a stored authentication may synchronize. The bot ret
 The minimum threshold is the configured Executives role (default ID `1533718284615291042`). Authorization compares positions, so any highest role at or above Executives qualifies. Members holding role `1539005023995043880` or `1539005027748945971` may also run `/update`; more exceptions can be supplied through `UPDATE_ALLOWED_ROLE_IDS`. All callers still cannot add or remove a role equal to or above their own highest role. Validation rejects the wrong guild, `@everyone`, managed integration roles, roles equal to or above the caller, roles equal to or above the bot, and invalid no-change requests.
 
 To remove a role, run `/update user:@Member action:Remove role`. You may select a role directly, or omit `role` to receive a private dropdown containing roles the member currently has and that both you and the bot are permitted to remove. Selecting an entry rechecks Executive access and both role hierarchies before removing it. Unrelated roles are left untouched. Every successful add or removal is written to `role_update_logs`, printed to the service log, and—when `LOG_CHANNEL_ID` is configured—posted as an embed.
+
+After `/update` changes an authenticated member, the bot immediately reads that member's current Roblox group rank and synchronizes its mapped Discord roles. Roles explicitly added through `/update` are stored as leadership-managed assignments, so later `/getrole` runs preserve them instead of treating them as obsolete Roblox roles. Removing one through `/update` also removes that protection. This synchronizes Discord against the Roblox group; it does not attempt to modify Roblox group ranks through unsupported credentials.
+
+The bot remembers the Roblox rank seen at authentication and after every sync. If a member is subsequently demoted from another rank to **Delta Basic**, the next `/update` or `/getrole` clears the stored authentication, removes authentication-managed roles, clears leadership-role protections, grants the Unauthenticated role, and requires one fresh `/authenticate`. Authentication records the new Delta Basic baseline, so the member is not trapped in a reauthentication loop. Other ranks keep their authentication and manually updated roles, including roles leadership assigned before the member authenticated.
+
+`/authentication-config view` paginates role mappings across full-size fields and additional private messages. It no longer truncates the mapping list after the first 1,024 characters, so mappings below Talent Acquisition Officer remain visible.
 
 ### `/unlink user:@Member`
 

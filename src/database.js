@@ -1,7 +1,7 @@
 function createDatabase(databaseUrl, PoolClass = null) {
   if (!databaseUrl) {
     const unavailable = async () => { throw new Error('DATABASE_URL is not configured'); };
-    return { configured: false, init: unavailable, ping: async () => false, createPending: unavailable, consumePending: unavailable, saveAuthentication: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
+    return { configured: false, init: unavailable, ping: async () => false, createPending: unavailable, consumePending: unavailable, saveAuthentication: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getManualRoleIds: unavailable, addManualRole: unavailable, removeManualRole: unavailable, clearManualRoles: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
   }
   const DatabasePool = PoolClass ?? require('pg').Pool;
   const pool = new DatabasePool({ connectionString: databaseUrl, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
@@ -25,6 +25,8 @@ function createDatabase(databaseUrl, PoolClass = null) {
         roblox_user_id BIGINT UNIQUE NOT NULL,
         roblox_username TEXT NOT NULL,
         rp_name TEXT,
+        last_roblox_role_id BIGINT,
+        last_roblox_role_name TEXT,
         authenticated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -53,6 +55,8 @@ function createDatabase(databaseUrl, PoolClass = null) {
       ALTER TABLE authentication_sessions ADD COLUMN IF NOT EXISTS code_verifier TEXT;
       ALTER TABLE authentication_sessions ADD COLUMN IF NOT EXISTS rp_name TEXT;
       ALTER TABLE authentications ADD COLUMN IF NOT EXISTS rp_name TEXT;
+      ALTER TABLE authentications ADD COLUMN IF NOT EXISTS last_roblox_role_id BIGINT;
+      ALTER TABLE authentications ADD COLUMN IF NOT EXISTS last_roblox_role_name TEXT;
       CREATE TABLE IF NOT EXISTS role_update_logs (
         id BIGSERIAL PRIMARY KEY,
         target_discord_user_id BIGINT NOT NULL,
@@ -79,6 +83,14 @@ function createDatabase(databaseUrl, PoolClass = null) {
         roblox_role_id BIGINT NOT NULL,
         discord_role_id BIGINT NOT NULL,
         PRIMARY KEY (guild_id, roblox_role_id, discord_role_id)
+      );
+      CREATE TABLE IF NOT EXISTS manual_role_assignments (
+        guild_id BIGINT NOT NULL,
+        discord_user_id BIGINT NOT NULL,
+        discord_role_id BIGINT NOT NULL,
+        assigned_by BIGINT NOT NULL,
+        assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (guild_id, discord_user_id, discord_role_id)
       );
     `);
   }
@@ -116,14 +128,16 @@ function createDatabase(databaseUrl, PoolClass = null) {
         throw error;
       }
       const result = await client.query(`INSERT INTO authentications
-        (discord_user_id, roblox_user_id, roblox_username, rp_name, authenticated_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
+        (discord_user_id, roblox_user_id, roblox_username, rp_name, last_roblox_role_id, last_roblox_role_name, authenticated_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
         ON CONFLICT (discord_user_id) DO UPDATE SET
           roblox_user_id = EXCLUDED.roblox_user_id,
           roblox_username = EXCLUDED.roblox_username,
           rp_name = COALESCE(EXCLUDED.rp_name, authentications.rp_name),
+          last_roblox_role_id = COALESCE(EXCLUDED.last_roblox_role_id, authentications.last_roblox_role_id),
+          last_roblox_role_name = COALESCE(EXCLUDED.last_roblox_role_name, authentications.last_roblox_role_name),
           updated_at = NOW()
-        RETURNING *`, [record.discordUserId, record.robloxUserId, record.robloxUsername, record.rpName ?? null]);
+        RETURNING *`, [record.discordUserId, record.robloxUserId, record.robloxUsername, record.rpName ?? null, record.robloxRoleId ?? null, record.robloxRoleName ?? null]);
       await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
@@ -138,6 +152,21 @@ function createDatabase(databaseUrl, PoolClass = null) {
   const getByRobloxId = (id) => one('SELECT * FROM authentications WHERE roblox_user_id = $1', [id]);
   async function unlink(discordUserId) {
     return one('DELETE FROM authentications WHERE discord_user_id = $1 RETURNING *', [discordUserId]);
+  }
+  async function getManualRoleIds(guildId, discordUserId) {
+    const result = await pool.query('SELECT discord_role_id FROM manual_role_assignments WHERE guild_id=$1 AND discord_user_id=$2', [guildId, discordUserId]);
+    return result.rows.map((row) => String(row.discord_role_id));
+  }
+  async function addManualRole(guildId, discordUserId, discordRoleId, assignedBy) {
+    await pool.query(`INSERT INTO manual_role_assignments (guild_id, discord_user_id, discord_role_id, assigned_by)
+      VALUES ($1,$2,$3,$4) ON CONFLICT (guild_id, discord_user_id, discord_role_id)
+      DO UPDATE SET assigned_by=EXCLUDED.assigned_by, assigned_at=NOW()`, [guildId, discordUserId, discordRoleId, assignedBy]);
+  }
+  async function removeManualRole(guildId, discordUserId, discordRoleId) {
+    await pool.query('DELETE FROM manual_role_assignments WHERE guild_id=$1 AND discord_user_id=$2 AND discord_role_id=$3', [guildId, discordUserId, discordRoleId]);
+  }
+  async function clearManualRoles(guildId, discordUserId) {
+    await pool.query('DELETE FROM manual_role_assignments WHERE guild_id=$1 AND discord_user_id=$2', [guildId, discordUserId]);
   }
   async function logRoleAction(entry) {
     await pool.query(`INSERT INTO role_update_logs
@@ -182,7 +211,7 @@ function createDatabase(databaseUrl, PoolClass = null) {
       AND ($3::BIGINT IS NULL OR discord_role_id=$3)`, [guildId, robloxRoleId, discordRoleId]);
     return getGuildConfig(guildId);
   }
-  return { configured: true, init, ping, createPending, consumePending, saveAuthentication, getByDiscordId, getByRobloxId, unlink, logRoleAction, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
+  return { configured: true, init, ping, createPending, consumePending, saveAuthentication, getByDiscordId, getByRobloxId, unlink, logRoleAction, getManualRoleIds, addManualRole, removeManualRole, clearManualRoles, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
 }
 
 module.exports = { createDatabase };
