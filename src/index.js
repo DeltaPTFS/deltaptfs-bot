@@ -5,6 +5,7 @@ const {
   Client,
   Events,
   GatewayIntentBits,
+  Partials,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } = require('discord.js');
@@ -25,6 +26,7 @@ const { createRoleSyncService } = require('./role-sync');
 const { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
 const { authenticationPanelPayloads, loadAuthenticationPanelImages } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
+const { buildLinkButtonMessage, parseHexColor, reactionInput, reactionKey } = require('./message-tools');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -34,7 +36,10 @@ if (!token) {
   process.exit(1);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessageReactions],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
+});
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
 async function effectiveGuildConfig(guildId) {
@@ -154,6 +159,30 @@ const authenticationPanelCommand = new SlashCommandBuilder()
   .addAttachmentOption((option) => option.setName('welcome-banner').setDescription('Optional replacement welcome PNG'))
   .addAttachmentOption((option) => option.setName('middle-banner').setDescription('Optional replacement middle PNG'))
   .addAttachmentOption((option) => option.setName('bottom-banner').setDescription('Optional replacement bottom PNG'));
+
+const createButtonCommand = new SlashCommandBuilder()
+  .setName('create-button')
+  .setDescription('Post a custom link button and colored message')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addStringOption((option) => option.setName('text').setDescription('Message shown above the button').setRequired(true))
+  .addStringOption((option) => option.setName('label').setDescription('Button label').setRequired(true).setMaxLength(80))
+  .addStringOption((option) => option.setName('link').setDescription('HTTPS destination URL').setRequired(true))
+  .addStringOption((option) => option.setName('hex').setDescription('Message accent color, such as #071D49'))
+  .addStringOption((option) => option.setName('emoji').setDescription('Unicode emoji or a server custom emoji'));
+
+const reactionRoleCommand = new SlashCommandBuilder()
+  .setName('reaction-role')
+  .setDescription('Create and manage persistent reaction roles')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addSubcommand((subcommand) => subcommand.setName('create').setDescription('Create a reaction-role message')
+    .addRoleOption((option) => option.setName('role').setDescription('Role members receive').setRequired(true))
+    .addStringOption((option) => option.setName('emoji').setDescription('Unicode emoji or server custom emoji').setRequired(true))
+    .addStringOption((option) => option.setName('message').setDescription('Reaction-role instructions').setRequired(true))
+    .addStringOption((option) => option.setName('hex').setDescription('Embed color, such as #071D49')))
+  .addSubcommand((subcommand) => subcommand.setName('remove').setDescription('Delete a saved reaction-role mapping')
+    .addStringOption((option) => option.setName('message-id').setDescription('Reaction-role message ID').setRequired(true))
+    .addStringOption((option) => option.setName('emoji').setDescription('Mapped emoji').setRequired(true)))
+  .addSubcommand((subcommand) => subcommand.setName('list').setDescription('List all saved reaction-role mappings'));
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -542,7 +571,8 @@ client.once(Events.ClientReady, async (readyClient) => {
     await readyClient.application.commands.set([
       setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
-      authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(),
+      authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
+      reactionRoleCommand.toJSON(),
     ]);
     health.markReady();
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
@@ -1099,6 +1129,111 @@ async function handleAuthenticationConfig(interaction) {
   }
 }
 
+async function handleCreateButton(interaction) {
+  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need **Manage Server** to create link buttons.', ephemeral: true });
+    return;
+  }
+  if (!interaction.channel?.isTextBased()) {
+    await interaction.reply({ content: 'Run this command in a text channel.', ephemeral: true });
+    return;
+  }
+  try {
+    const payload = buildLinkButtonMessage({
+      text: interaction.options.getString('text', true),
+      label: interaction.options.getString('label', true),
+      url: interaction.options.getString('link', true),
+      hex: interaction.options.getString('hex'),
+      emoji: interaction.options.getString('emoji'),
+    }, interaction.guild);
+    await interaction.channel.send(payload);
+    await interaction.reply({ content: 'Custom link button posted. Discord controls link-button color; your hex is applied to the message accent.', ephemeral: true });
+  } catch (error) {
+    await interaction.reply({ content: `Could not create button: ${String(error.message || error).slice(0, 500)}`, ephemeral: true });
+  }
+}
+
+async function handleReactionRole(interaction) {
+  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need **Manage Server** to configure reaction roles.', ephemeral: true });
+    return;
+  }
+  if (!interaction.channel?.isTextBased()) {
+    await interaction.reply({ content: 'Run this command in a text channel.', ephemeral: true });
+    return;
+  }
+  if (!database.configured) {
+    await interaction.reply({ content: 'Reaction roles require `DATABASE_URL` so mappings survive restarts.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'create') {
+      const role = interaction.options.getRole('role', true);
+      if (role.id === interaction.guild.roles.everyone.id || role.managed || !role.editable) {
+        throw new Error('That role cannot be managed. Move the bot role above it and do not select @everyone or an integration role.');
+      }
+      const selected = reactionInput(interaction.options.getString('emoji', true), interaction.guild);
+      const panel = await interaction.channel.send({ embeds: [{
+        color: parseHexColor(interaction.options.getString('hex')),
+        description: interaction.options.getString('message', true).slice(0, 4096),
+        fields: [{ name: 'Reaction Role', value: `${selected.reactable} — ${role}` }],
+      }] });
+      await panel.react(selected.reactable);
+      await database.addReactionRole({
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        messageId: panel.id,
+        emojiKey: selected.key,
+        roleId: role.id,
+        createdBy: interaction.user.id,
+      });
+      await interaction.editReply(`Reaction role created: [open message](${panel.url}).`);
+      return;
+    }
+    if (subcommand === 'remove') {
+      const messageId = interaction.options.getString('message-id', true).trim();
+      if (!/^\d{17,20}$/.test(messageId)) throw new Error('Enter a valid Discord message ID.');
+      const selected = reactionInput(interaction.options.getString('emoji', true), interaction.guild);
+      const removed = await database.removeReactionRole(interaction.guildId, messageId, selected.key);
+      await interaction.editReply(removed ? 'Reaction-role mapping removed. The original message was left in place.' : 'No matching reaction-role mapping was found.');
+      return;
+    }
+    const mappings = await database.listReactionRoles(interaction.guildId);
+    const lines = mappings.map((entry) => `<#${entry.channel_id}> · message \`${entry.message_id}\` · ${entry.emoji_key} → <@&${entry.discord_role_id}>`);
+    const pages = splitMessage(lines.join('\n') || 'No reaction roles are configured.');
+    await interaction.editReply(pages.shift());
+    for (const content of pages) await interaction.followUp({ content, ephemeral: true });
+  } catch (error) {
+    console.error('Reaction-role configuration failed:', error);
+    await interaction.editReply(`Reaction-role configuration failed: ${String(error.message || error).slice(0, 500)}`);
+  }
+}
+
+async function applyReactionRole(reaction, user, add) {
+  if (user.bot || !database.configured) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const mapping = await database.getReactionRole(reaction.message.id, reactionKey(reaction.emoji));
+    if (!mapping) return;
+    const guild = reaction.message.guild;
+    if (!guild || String(guild.id) !== String(mapping.guild_id)) return;
+    const [member, role] = await Promise.all([
+      guild.members.fetch(user.id),
+      guild.roles.fetch(String(mapping.discord_role_id)),
+    ]);
+    if (!role?.editable) throw new Error(`Reaction role ${mapping.discord_role_id} is not manageable by the bot`);
+    if (add && !member.roles.cache.has(role.id)) await member.roles.add(role, 'Reaction role selected');
+    if (!add && member.roles.cache.has(role.id)) await member.roles.remove(role, 'Reaction role removed');
+  } catch (error) {
+    console.error(`Could not ${add ? 'add' : 'remove'} reaction role:`, error);
+  }
+}
+
+client.on(Events.MessageReactionAdd, (reaction, user) => applyReactionRole(reaction, user, true));
+client.on(Events.MessageReactionRemove, (reaction, user) => applyReactionRole(reaction, user, false));
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('update-remove:')) {
     await handleUpdateRemoveSelect(interaction);
@@ -1153,6 +1288,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'authentication-config') {
     await handleAuthenticationConfig(interaction);
+    return;
+  }
+  if (interaction.commandName === 'create-button') {
+    await handleCreateButton(interaction);
+    return;
+  }
+  if (interaction.commandName === 'reaction-role') {
+    await handleReactionRole(interaction);
     return;
   }
   if (interaction.commandName === 'authentication-panel') {

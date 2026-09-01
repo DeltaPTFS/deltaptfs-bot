@@ -23,6 +23,7 @@ test('PostgreSQL initialization creates authentication, session, and audit table
   assert.match(schema, /CREATE TABLE IF NOT EXISTS guild_authentication_config/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS guild_role_mappings/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS manual_role_assignments/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS reaction_roles/);
   assert.match(schema, /rp_name TEXT/);
   assert.match(schema, /last_roblox_role_id BIGINT/);
   assert.match(schema, /last_roblox_role_name TEXT/);

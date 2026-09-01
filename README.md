@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.5.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.6.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -240,6 +240,14 @@ After `/update` changes an authenticated member, the bot immediately reads that 
 The bot remembers the Roblox rank seen at authentication and after every sync. If a member is subsequently demoted from another rank to **Delta Basic**, the next `/update` or `/getrole` clears the stored authentication, removes authentication-managed roles, clears leadership-role protections, grants the Unauthenticated role, and requires one fresh `/authenticate`. Authentication records the new Delta Basic baseline, so the member is not trapped in a reauthentication loop. Other ranks keep their authentication and manually updated roles, including roles leadership assigned before the member authenticated.
 
 `/authentication-config view` paginates role mappings across full-size fields and additional private messages. It no longer truncates the mapping list after the first 1,024 characters, so mappings below Talent Acquisition Officer remain visible.
+
+### `/create-button`
+
+Members with **Manage Server** can post a customizable link button with `/create-button text:... label:... link:https://... hex:#071D49 emoji:🔗`. The command validates HTTPS links, six-digit hex colors, Unicode emoji, and server custom emoji. Discord does not permit arbitrary hex colors on buttons themselves: link-button style is controlled by Discord, so `hex` sets the accompanying message embed's accent color.
+
+### `/reaction-role`
+
+Use `/reaction-role create role:@Role emoji:✅ message:... hex:#071D49` to post a persistent reaction-role panel. Adding the configured reaction grants the role and removing the reaction removes it. `/reaction-role list` shows stored mappings, while `/reaction-role remove message-id:... emoji:...` disables a mapping without deleting the original message. Mappings are stored in PostgreSQL and survive restarts. The bot role must be above every reaction role and needs **Manage Roles**, **Add Reactions**, **Read Message History**, and access to the panel channel.
 
 ### `/unlink user:@Member`
 

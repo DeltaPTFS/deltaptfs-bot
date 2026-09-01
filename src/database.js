@@ -1,7 +1,7 @@
 function createDatabase(databaseUrl, PoolClass = null) {
   if (!databaseUrl) {
     const unavailable = async () => { throw new Error('DATABASE_URL is not configured'); };
-    return { configured: false, init: unavailable, ping: async () => false, createPending: unavailable, consumePending: unavailable, saveAuthentication: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getManualRoleIds: unavailable, addManualRole: unavailable, removeManualRole: unavailable, clearManualRoles: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
+    return { configured: false, init: unavailable, ping: async () => false, createPending: unavailable, consumePending: unavailable, saveAuthentication: unavailable, getByDiscordId: unavailable, getByRobloxId: unavailable, unlink: unavailable, logRoleAction: unavailable, getManualRoleIds: unavailable, addManualRole: unavailable, removeManualRole: unavailable, clearManualRoles: unavailable, getReactionRole: unavailable, listReactionRoles: unavailable, addReactionRole: unavailable, removeReactionRole: unavailable, getGuildConfig: unavailable, saveGuildConfig: unavailable, addRoleMapping: unavailable, removeRoleMapping: unavailable, close: async () => {} };
   }
   const DatabasePool = PoolClass ?? require('pg').Pool;
   const pool = new DatabasePool({ connectionString: databaseUrl, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
@@ -92,6 +92,16 @@ function createDatabase(databaseUrl, PoolClass = null) {
         assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (guild_id, discord_user_id, discord_role_id)
       );
+      CREATE TABLE IF NOT EXISTS reaction_roles (
+        guild_id BIGINT NOT NULL,
+        channel_id BIGINT NOT NULL,
+        message_id BIGINT NOT NULL,
+        emoji_key TEXT NOT NULL,
+        discord_role_id BIGINT NOT NULL,
+        created_by BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (message_id, emoji_key)
+      );
     `);
   }
 
@@ -168,6 +178,20 @@ function createDatabase(databaseUrl, PoolClass = null) {
   async function clearManualRoles(guildId, discordUserId) {
     await pool.query('DELETE FROM manual_role_assignments WHERE guild_id=$1 AND discord_user_id=$2', [guildId, discordUserId]);
   }
+  const getReactionRole = (messageId, emojiKey) => one('SELECT * FROM reaction_roles WHERE message_id=$1 AND emoji_key=$2', [messageId, emojiKey]);
+  async function listReactionRoles(guildId) {
+    return (await pool.query('SELECT * FROM reaction_roles WHERE guild_id=$1 ORDER BY created_at', [guildId])).rows;
+  }
+  async function addReactionRole(entry) {
+    await pool.query(`INSERT INTO reaction_roles
+      (guild_id, channel_id, message_id, emoji_key, discord_role_id, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (message_id, emoji_key) DO UPDATE SET discord_role_id=EXCLUDED.discord_role_id, created_by=EXCLUDED.created_by`,
+    [entry.guildId, entry.channelId, entry.messageId, entry.emojiKey, entry.roleId, entry.createdBy]);
+  }
+  async function removeReactionRole(guildId, messageId, emojiKey) {
+    return one('DELETE FROM reaction_roles WHERE guild_id=$1 AND message_id=$2 AND emoji_key=$3 RETURNING *', [guildId, messageId, emojiKey]);
+  }
   async function logRoleAction(entry) {
     await pool.query(`INSERT INTO role_update_logs
       (target_discord_user_id, target_username, executor_discord_user_id, executor_username, discord_role_id, discord_role_name, action)
@@ -211,7 +235,7 @@ function createDatabase(databaseUrl, PoolClass = null) {
       AND ($3::BIGINT IS NULL OR discord_role_id=$3)`, [guildId, robloxRoleId, discordRoleId]);
     return getGuildConfig(guildId);
   }
-  return { configured: true, init, ping, createPending, consumePending, saveAuthentication, getByDiscordId, getByRobloxId, unlink, logRoleAction, getManualRoleIds, addManualRole, removeManualRole, clearManualRoles, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
+  return { configured: true, init, ping, createPending, consumePending, saveAuthentication, getByDiscordId, getByRobloxId, unlink, logRoleAction, getManualRoleIds, addManualRole, removeManualRole, clearManualRoles, getReactionRole, listReactionRoles, addReactionRole, removeReactionRole, getGuildConfig, saveGuildConfig, addRoleMapping, removeRoleMapping, close: () => pool.end() };
 }
 
 module.exports = { createDatabase };
