@@ -38,6 +38,8 @@ function loadConfig(environment = process.env) {
     unauthenticatedRoleId: environment.UNAUTHENTICATED_ROLE_ID,
     guildId: environment.GUILD_ID,
     logChannelId: environment.LOG_CHANNEL_ID,
+    moderationLeadershipRoleId: environment.MODERATION_LEADERSHIP_ROLE_ID,
+    moderationFounderRoleId: environment.MODERATION_FOUNDER_ROLE_ID,
     robloxGroupId: environment.ROBLOX_GROUP_ID || environment.ROBLOX_COMMUNITY_ID,
     robloxOauthClientId: environment.ROBLOX_OAUTH_CLIENT_ID,
     robloxOauthClientSecret: environment.ROBLOX_OAUTH_CLIENT_SECRET,

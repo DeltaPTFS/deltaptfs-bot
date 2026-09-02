@@ -6,11 +6,15 @@ test('central configuration combines mapped and explicitly managed role IDs', ()
   const config = loadConfig({
     ROLE_MAPPINGS: '{"10":"100","20":"200"}',
     MANAGED_ROLE_IDS: '["200","300"]',
+    MODERATION_LEADERSHIP_ROLE_ID: '400',
+    MODERATION_FOUNDER_ROLE_ID: '500',
   });
   assert.equal(config.executiveRoleId, '1533718284615291042');
   assert.deepEqual(config.updateAllowedRoleIds, ['1539005023995043880', '1539005027748945971']);
   assert.deepEqual(config.roleMappings, { 10: ['100'], 20: ['200'] });
   assert.deepEqual(config.managedRoleIds, ['200', '300', '100']);
+  assert.equal(config.moderationLeadershipRoleId, '400');
+  assert.equal(config.moderationFounderRoleId, '500');
 });
 
 test('rejects malformed role mappings', () => {

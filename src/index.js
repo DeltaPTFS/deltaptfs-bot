@@ -10,7 +10,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 const { SERVER_LAYOUT, formatLayout } = require('./layout');
-const { formatRoles, roleDefinitions } = require('./roles');
+const { ROLE_GROUPS, formatRoles, roleDefinitions } = require('./roles');
 const {
   awardMiles,
   getBalance,
@@ -27,6 +27,12 @@ const { createAuthenticationService, formatAuthenticatedNickname, validateRpName
 const { authenticationPanelPayloads, loadAuthenticationPanelImages } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
 const { buildLinkButtonMessage, parseHexColor, reactionInput, reactionKey } = require('./message-tools');
+const {
+  TIMEOUT_DURATIONS,
+  canUseFounderCommands,
+  canUseLeadershipCommands,
+  targetHierarchyError,
+} = require('./moderation');
 const { version: botVersion } = require('../package.json');
 
 const token = process.env.DISCORD_TOKEN;
@@ -183,6 +189,36 @@ const reactionRoleCommand = new SlashCommandBuilder()
     .addStringOption((option) => option.setName('message-id').setDescription('Reaction-role message ID').setRequired(true))
     .addStringOption((option) => option.setName('emoji').setDescription('Mapped emoji').setRequired(true)))
   .addSubcommand((subcommand) => subcommand.setName('list').setDescription('List all saved reaction-role mappings'));
+
+const timeoutCommand = new SlashCommandBuilder()
+  .setName('timeout')
+  .setDescription('Timeout a member (Delta Leadership)')
+  .addUserOption((option) => option.setName('user').setDescription('Member to timeout').setRequired(true))
+  .addStringOption((option) => option.setName('duration').setDescription('Timeout duration').setRequired(true).addChoices(
+    { name: '5 minutes', value: '5m' }, { name: '10 minutes', value: '10m' },
+    { name: '30 minutes', value: '30m' }, { name: '1 hour', value: '1h' },
+    { name: '1 day', value: '1d' }, { name: '1 week', value: '1w' },
+  ))
+  .addStringOption((option) => option.setName('reason').setDescription('Reason for the timeout').setMaxLength(500));
+
+const kickCommand = new SlashCommandBuilder()
+  .setName('kick')
+  .setDescription('Kick a member (Delta Leadership)')
+  .addUserOption((option) => option.setName('user').setDescription('Member to kick').setRequired(true))
+  .addStringOption((option) => option.setName('reason').setDescription('Reason for the kick').setMaxLength(500));
+
+const banCommand = new SlashCommandBuilder()
+  .setName('ban')
+  .setDescription('Ban a member (Delta Founders only)')
+  .addUserOption((option) => option.setName('user').setDescription('Member to ban').setRequired(true))
+  .addStringOption((option) => option.setName('reason').setDescription('Reason for the ban').setMaxLength(500));
+
+const deleteCommand = new SlashCommandBuilder()
+  .setName('delete')
+  .setDescription('Founder-only message deletion tools')
+  .addSubcommand((subcommand) => subcommand.setName('messages').setDescription('Delete recent messages from one member')
+    .addUserOption((option) => option.setName('user').setDescription('Member whose messages will be deleted').setRequired(true))
+    .addIntegerOption((option) => option.setName('amount').setDescription('Maximum messages to delete').setMinValue(1).setMaxValue(100).setRequired(true)));
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -572,7 +608,8 @@ client.once(Events.ClientReady, async (readyClient) => {
       setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
-      reactionRoleCommand.toJSON(),
+      reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
+      deleteCommand.toJSON(),
     ]);
     health.markReady();
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
@@ -1231,6 +1268,110 @@ async function applyReactionRole(reaction, user, add) {
   }
 }
 
+function moderationAccess(member, foundersOnly = false) {
+  return foundersOnly
+    ? canUseFounderCommands(member, config.moderationFounderRoleId)
+    : canUseLeadershipCommands(member, ROLE_GROUPS, config.moderationLeadershipRoleId, config.moderationFounderRoleId);
+}
+
+async function moderationMembers(interaction) {
+  const user = interaction.options.getUser('user', true);
+  const [caller, target] = await Promise.all([
+    interaction.guild.members.fetch(interaction.user.id),
+    interaction.guild.members.fetch(user.id),
+  ]);
+  return { caller, target };
+}
+
+async function handleMemberModeration(interaction, action) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Run this command inside the Delta server.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const foundersOnly = action === 'ban';
+    const { caller, target } = await moderationMembers(interaction);
+    if (!moderationAccess(caller, foundersOnly)) {
+      await interaction.editReply(foundersOnly ? '❌ Only Delta Founders may use this command.' : '❌ You must be Delta Leadership or higher to use this command.');
+      return;
+    }
+    const hierarchyError = targetHierarchyError(caller, target, interaction.guild.ownerId);
+    if (hierarchyError) { await interaction.editReply(`❌ ${hierarchyError}`); return; }
+    const reason = interaction.options.getString('reason')?.trim() || `No reason provided by ${interaction.user.tag}`;
+    let detail;
+    if (action === 'timeout') {
+      if (!target.moderatable) throw new Error('My bot role must be above this member before I can timeout them.');
+      const duration = interaction.options.getString('duration', true);
+      await target.timeout(TIMEOUT_DURATIONS[duration], reason);
+      detail = `Timed out for **${duration}**`;
+    } else if (action === 'kick') {
+      if (!target.kickable) throw new Error('My bot role must be above this member before I can kick them.');
+      await target.kick(reason);
+      detail = 'Kicked from the server';
+    } else {
+      if (!target.bannable) throw new Error('My bot role must be above this member before I can ban them.');
+      await target.ban({ reason });
+      detail = 'Banned from the server';
+    }
+    const embed = { color: 0xC8102E, title: `✅ Member ${action === 'timeout' ? 'Timed Out' : action === 'kick' ? 'Kicked' : 'Banned'}`, fields: [
+      { name: 'Member', value: `${target}`, inline: true },
+      { name: 'Moderator', value: `${caller}`, inline: true },
+      { name: 'Action', value: detail },
+      { name: 'Reason', value: reason.slice(0, 1024) },
+    ] };
+    await recordAudit(interaction, {
+      targetId: target.id, targetUsername: target.user.tag,
+      executorId: caller.id, executorUsername: caller.user.tag,
+      roleId: null, roleName: null, action: action.toUpperCase(),
+    }, embed);
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error(`${action} command failed:`, error);
+    await interaction.editReply(`❌ ${String(error.message || error).slice(0, 500)}`);
+  }
+}
+
+async function handleDeleteMessages(interaction) {
+  if (!interaction.inGuild() || !interaction.channel?.isTextBased()) {
+    await interaction.reply({ content: 'Run this command in a server text channel.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const { caller, target } = await moderationMembers(interaction);
+    if (!moderationAccess(caller, true)) {
+      await interaction.editReply('❌ Only Delta Founders may use this command.');
+      return;
+    }
+    const hierarchyError = targetHierarchyError(caller, target, interaction.guild.ownerId);
+    if (hierarchyError) { await interaction.editReply(`❌ ${hierarchyError}`); return; }
+    const amount = interaction.options.getInteger('amount', true);
+    const recent = await interaction.channel.messages.fetch({ limit: 100 });
+    const selected = [...recent.values()].filter((message) => message.author.id === target.id).slice(0, amount);
+    if (!selected.length) {
+      await interaction.editReply(`No recent messages from ${target} were found in this channel.`);
+      return;
+    }
+    const deleted = await interaction.channel.bulkDelete(selected, true);
+    const embed = { color: 0xC8102E, title: '✅ Messages Deleted', fields: [
+      { name: 'Member', value: `${target}`, inline: true },
+      { name: 'Founder', value: `${caller}`, inline: true },
+      { name: 'Deleted', value: String(deleted.size), inline: true },
+      { name: 'Channel', value: `${interaction.channel}` },
+    ] };
+    await recordAudit(interaction, {
+      targetId: target.id, targetUsername: target.user.tag,
+      executorId: caller.id, executorUsername: caller.user.tag,
+      roleId: null, roleName: null, action: `MESSAGE_DELETE:${deleted.size}`,
+    }, embed);
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Delete messages command failed:', error);
+    await interaction.editReply(`❌ Could not delete messages: ${String(error.message || error).slice(0, 500)}`);
+  }
+}
+
 client.on(Events.MessageReactionAdd, (reaction, user) => applyReactionRole(reaction, user, true));
 client.on(Events.MessageReactionRemove, (reaction, user) => applyReactionRole(reaction, user, false));
 
@@ -1296,6 +1437,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'reaction-role') {
     await handleReactionRole(interaction);
+    return;
+  }
+  if (interaction.commandName === 'timeout') {
+    await handleMemberModeration(interaction, 'timeout');
+    return;
+  }
+  if (interaction.commandName === 'kick') {
+    await handleMemberModeration(interaction, 'kick');
+    return;
+  }
+  if (interaction.commandName === 'ban') {
+    await handleMemberModeration(interaction, 'ban');
+    return;
+  }
+  if (interaction.commandName === 'delete') {
+    await handleDeleteMessages(interaction);
     return;
   }
   if (interaction.commandName === 'authentication-panel') {

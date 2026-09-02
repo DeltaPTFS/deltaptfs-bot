@@ -3,6 +3,7 @@ const ROLE_GROUPS = [
     name: 'Board of Directors',
     categoryRole: { name: '━━ BOARD OF DIRECTORS ━━', color: '#4A000D' },
     roles: [
+      { name: 'Delta Founder', color: '#7D0015', hoist: true },
       { name: 'Chief Executive Officer', color: '#C8102E', hoist: true, permissions: ['ManageGuild', 'ManageChannels', 'ManageRoles'] },
       { name: 'Chief Operating Officer', color: '#D71920', hoist: true, permissions: ['ManageGuild', 'ManageChannels'] },
       { name: 'Chief Administrative Officer', color: '#B5121B', hoist: true, permissions: ['ManageGuild', 'ManageRoles'] },
@@ -14,6 +15,7 @@ const ROLE_GROUPS = [
     name: 'Leadership',
     categoryRole: { name: '━━ LEADERSHIP ━━', color: '#5B1025' },
     roles: [
+      { name: 'Delta Leadership', color: '#6A0016', hoist: true },
       { name: 'Chief of Staff', color: '#7A0019', hoist: true, permissions: ['ManageGuild', 'ManageChannels'] },
       { name: 'Chief of Corporate Affairs', color: '#8B1E3F', hoist: true, permissions: ['ManageGuild'] },
       { name: 'Chief of Safety', color: '#9E2A4D', hoist: true, permissions: ['ManageChannels'] },

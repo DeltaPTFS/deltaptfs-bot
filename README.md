@@ -134,7 +134,7 @@ VOICE CHANNELS
 
 The apply operation is idempotent: running it again skips matching channels and roles rather than duplicating them. It synchronizes private category permissions each time. Community and SkyMiles roles cannot see Flight Operations or Crew Operations; the explicitly listed board, leadership, executive, middle-rank, administration, moderation, and flight roles can see both.
 
-Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.6.0** before applying the layout.
+Applying the channel layout removes every retired airport-frequency category and channel, removes `#roles`, `#faq`, and the old ATC tower channel, and moves the Information Center and Authentication categories to the top. Run `/bot-version` after deployment and confirm it reports **v4.7.0** before applying the layout.
 
 ## Hosting configuration
 
@@ -248,6 +248,14 @@ Members with **Manage Server** can post a customizable link button with `/create
 ### `/reaction-role`
 
 Use `/reaction-role create role:@Role emoji:✅ message:... hex:#071D49` to post a persistent reaction-role panel. Adding the configured reaction grants the role and removing the reaction removes it. `/reaction-role list` shows stored mappings, while `/reaction-role remove message-id:... emoji:...` disables a mapping without deleting the original message. Mappings are stored in PostgreSQL and survive restarts. The bot role must be above every reaction role and needs **Manage Roles**, **Add Reactions**, **Read Message History**, and access to the panel channel.
+
+### Moderation commands
+
+Delta Leadership, Board of Directors, and Delta Founders may use `/timeout user:@Member duration:... reason:...` and `/kick user:@Member reason:...`. Only members holding **Delta Founder | Delta Air Lines** may use `/ban user:@Member reason:...` and `/delete messages user:@Member amount:...`. Every command enforces the caller/member Discord hierarchy, blocks self-moderation and moderation of the server owner, checks the bot hierarchy, returns a private confirmation, and writes to the configured audit log.
+
+`/delete messages` searches the latest 100 messages in the current channel and deletes up to the requested number from the selected member. Discord bulk deletion excludes messages older than 14 days. The bot requires **Moderate Members**, **Kick Members**, **Ban Members**, **Manage Messages**, and **Read Message History** as applicable.
+
+Run `/setup mode:Apply layout section:Roles only` to create the new `Delta Founder | Delta Air Lines` and `Delta Leadership | Delta Air Lines` roles. Existing servers can instead set `MODERATION_FOUNDER_ROLE_ID` and `MODERATION_LEADERSHIP_ROLE_ID`; the leadership ID acts as a hierarchy threshold, while founder-only commands require the configured founder role itself.
 
 ### `/unlink user:@Member`
 
