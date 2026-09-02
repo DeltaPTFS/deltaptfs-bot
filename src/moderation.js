@@ -18,7 +18,7 @@ function canUseLeadershipCommands(member, roleGroups, leadershipRoleId, founderR
   if (canUseFounderCommands(member, founderRoleId)) return true;
   if (leadershipRoleId) {
     const threshold = member.guild.roles.cache.get(leadershipRoleId);
-    return Boolean(threshold && member.roles.highest.position >= threshold.position);
+    if (threshold) return member.roles.highest.position >= threshold.position;
   }
   const names = new Set(roleGroups
     .filter((group) => LEADERSHIP_GROUPS.has(group.name))

@@ -255,7 +255,7 @@ Delta Leadership, Board of Directors, and Delta Founders may use `/timeout user:
 
 `/delete messages` searches the latest 100 messages in the current channel and deletes up to the requested number from the selected member. Discord bulk deletion excludes messages older than 14 days. The bot requires **Moderate Members**, **Kick Members**, **Ban Members**, **Manage Messages**, and **Read Message History** as applicable.
 
-Run `/setup mode:Apply layout section:Roles only` to create the new `Delta Founder | Delta Air Lines` and `Delta Leadership | Delta Air Lines` roles. Existing servers can instead set `MODERATION_FOUNDER_ROLE_ID` and `MODERATION_LEADERSHIP_ROLE_ID`; the leadership ID acts as a hierarchy threshold, while founder-only commands require the configured founder role itself.
+The moderation defaults are connected to Delta Leadership (`15390050301891684`) and Delta Founder (`1539005297417519205`). `MODERATION_LEADERSHIP_ROLE_ID` acts as a hierarchy threshold, while `MODERATION_FOUNDER_ROLE_ID` requires direct membership for founder-only commands. You can override either environment variable if those server roles are replaced. If a configured role is temporarily unavailable, the bot falls back to the generated `Delta Leadership | Delta Air Lines` and `Delta Founder | Delta Air Lines` role names instead of locking authorized staff out.
 
 ### `/unlink user:@Member`
 

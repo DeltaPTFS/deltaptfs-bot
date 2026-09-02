@@ -21,6 +21,12 @@ test('rejects malformed role mappings', () => {
   assert.throws(() => parseRoleMappings('{"Captain":"role"}'), /numeric Roblox role ID/);
 });
 
+test('uses the Delta Leadership and Delta Founder server roles by default', () => {
+  const config = loadConfig({});
+  assert.equal(config.moderationLeadershipRoleId, '15390050301891684');
+  assert.equal(config.moderationFounderRoleId, '1539005297417519205');
+});
+
 test('stored guild configuration overrides core roles and extends environment mappings', () => {
   const base = loadConfig({ ROLE_MAPPINGS: '{"10":"100"}', MANAGED_ROLE_IDS: '[]' });
   const merged = mergeGuildConfig(base, {

@@ -36,6 +36,11 @@ test('moderation hierarchy and timeout durations are enforced', () => {
   assert.equal(TIMEOUT_DURATIONS['1w'], 604_800_000);
 });
 
+test('falls back to configured Delta role names if a configured role ID is unavailable', () => {
+  assert.equal(canUseLeadershipCommands(member('Delta Leadership'), ROLE_GROUPS, 'missing-role'), true);
+  assert.equal(canUseFounderCommands(member('Delta Founder'), 'missing-role'), true);
+});
+
 test('moderation slash commands and action handlers are registered', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
   for (const command of ['timeout', 'kick', 'ban', 'delete']) assert.match(source, new RegExp(`setName\\('${command}'\\)`));
