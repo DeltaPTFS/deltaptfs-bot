@@ -48,4 +48,43 @@ function buildLinkButtonMessage({ text, label, url, emoji, hex }, guild = null) 
   };
 }
 
-module.exports = { DEFAULT_DELTA_BLUE, buildLinkButtonMessage, parseEmoji, parseHexColor, reactionInput, reactionKey };
+function buildLinkButton({ label, url, emoji }, guild = null) {
+  let parsedUrl;
+  try { parsedUrl = new URL(url); } catch { throw new Error('Link must be a valid HTTPS URL.'); }
+  if (parsedUrl.protocol !== 'https:') throw new Error('Link buttons require an HTTPS URL.');
+  const cleanedLabel = label.trim();
+  if (!cleanedLabel) throw new Error('Button label cannot be empty.');
+  const button = { type: 2, style: 5, label: cleanedLabel.slice(0, 80), url: parsedUrl.toString() };
+  const parsedEmoji = parseEmoji(emoji, guild);
+  if (parsedEmoji) button.emoji = parsedEmoji;
+  return button;
+}
+
+function addLinkButtonToMessage(message, options, guild = null) {
+  const components = message.components.map((row) => row.toJSON());
+  const button = buildLinkButton(options, guild);
+  let row = components.find((candidate) => candidate.components.length < 5);
+  if (!row) {
+    if (components.length >= 5) throw new Error('That message already has the maximum number of component rows.');
+    row = { type: 1, components: [] };
+    components.push(row);
+  }
+  row.components.push(button);
+
+  const embeds = message.embeds.map((embed) => embed.toJSON());
+  const color = parseHexColor(options.hex);
+  if (embeds.length) embeds[0].color = color;
+  else embeds.push({ color, description: '\u200b' });
+  return { embeds, components };
+}
+
+module.exports = {
+  DEFAULT_DELTA_BLUE,
+  addLinkButtonToMessage,
+  buildLinkButton,
+  buildLinkButtonMessage,
+  parseEmoji,
+  parseHexColor,
+  reactionInput,
+  reactionKey,
+};

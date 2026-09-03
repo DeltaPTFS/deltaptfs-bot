@@ -243,7 +243,9 @@ The bot remembers the Roblox rank seen at authentication and after every sync. I
 
 ### `/create-button`
 
-Members with **Manage Server** can post a customizable link button with `/create-button text:... label:... link:https://... hex:#071D49 emoji:🔗`. The command validates HTTPS links, six-digit hex colors, Unicode emoji, and server custom emoji. Discord does not permit arbitrary hex colors on buttons themselves: link-button style is controlled by Discord, so `hex` sets the accompanying message embed's accent color.
+Only the configured Delta Leadership role (`15390050301891684`) can use `/create-button message-id:... label:... link:https://... hex:#071D49 emoji:🔗`. The command fetches an existing message in the current channel and adds the link button without posting a replacement message. Discord only permits bots to edit messages they authored, so the selected message must have been sent by this bot. Existing buttons are preserved up to Discord's component limits.
+
+The command validates HTTPS links, six-digit hex colors, Unicode emoji, and server custom emoji. Discord does not support custom hex colors on buttons themselves; link buttons use Discord's fixed link style. The required `hex` option applies the requested color to the existing message's embed accent.
 
 ### `/reaction-role`
 

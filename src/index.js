@@ -26,7 +26,7 @@ const { createRoleSyncService } = require('./role-sync');
 const { createAuthenticationService, formatAuthenticatedNickname, validateRpName } = require('./authentication-service');
 const { authenticationPanelPayloads, loadAuthenticationPanelImages } = require('./authentication-panel');
 const { successEmbed, validateExecutiveAccess, validateRoleUpdate } = require('./role-update');
-const { buildLinkButtonMessage, parseHexColor, reactionInput, reactionKey } = require('./message-tools');
+const { addLinkButtonToMessage, parseHexColor, reactionInput, reactionKey } = require('./message-tools');
 const {
   TIMEOUT_DURATIONS,
   canUseFounderCommands,
@@ -168,12 +168,11 @@ const authenticationPanelCommand = new SlashCommandBuilder()
 
 const createButtonCommand = new SlashCommandBuilder()
   .setName('create-button')
-  .setDescription('Post a custom link button and colored message')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-  .addStringOption((option) => option.setName('text').setDescription('Message shown above the button').setRequired(true))
+  .setDescription('Add a link button to an existing bot message (Delta Leadership)')
+  .addStringOption((option) => option.setName('message-id').setDescription('ID of an existing message from this bot in the current channel').setRequired(true))
   .addStringOption((option) => option.setName('label').setDescription('Button label').setRequired(true).setMaxLength(80))
   .addStringOption((option) => option.setName('link').setDescription('HTTPS destination URL').setRequired(true))
-  .addStringOption((option) => option.setName('hex').setDescription('Message accent color, such as #071D49'))
+  .addStringOption((option) => option.setName('hex').setDescription('Message accent color, such as #071D49').setRequired(true))
   .addStringOption((option) => option.setName('emoji').setDescription('Unicode emoji or a server custom emoji'));
 
 const reactionRoleCommand = new SlashCommandBuilder()
@@ -1167,8 +1166,8 @@ async function handleAuthenticationConfig(interaction) {
 }
 
 async function handleCreateButton(interaction) {
-  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-    await interaction.reply({ content: 'You need **Manage Server** to create link buttons.', ephemeral: true });
+  if (!interaction.inGuild() || !interaction.member.roles.cache.has(config.moderationLeadershipRoleId)) {
+    await interaction.reply({ content: `Only <@&${config.moderationLeadershipRoleId}> may add buttons to messages.`, ephemeral: true });
     return;
   }
   if (!interaction.channel?.isTextBased()) {
@@ -1176,17 +1175,22 @@ async function handleCreateButton(interaction) {
     return;
   }
   try {
-    const payload = buildLinkButtonMessage({
-      text: interaction.options.getString('text', true),
+    const messageId = interaction.options.getString('message-id', true);
+    if (!/^\d{17,20}$/.test(messageId)) throw new Error('Message ID must be a valid Discord snowflake.');
+    const message = await interaction.channel.messages.fetch(messageId);
+    if (message.author.id !== interaction.client.user.id) {
+      throw new Error('Discord only allows this bot to edit messages that it originally sent.');
+    }
+    const payload = addLinkButtonToMessage(message, {
       label: interaction.options.getString('label', true),
       url: interaction.options.getString('link', true),
-      hex: interaction.options.getString('hex'),
+      hex: interaction.options.getString('hex', true),
       emoji: interaction.options.getString('emoji'),
     }, interaction.guild);
-    await interaction.channel.send(payload);
-    await interaction.reply({ content: 'Custom link button posted. Discord controls link-button color; your hex is applied to the message accent.', ephemeral: true });
+    await message.edit(payload);
+    await interaction.reply({ content: 'Button added to the existing message. Discord fixes link buttons to its link-button style; the selected hex was applied to the message accent.', ephemeral: true });
   } catch (error) {
-    await interaction.reply({ content: `Could not create button: ${String(error.message || error).slice(0, 500)}`, ephemeral: true });
+    await interaction.reply({ content: `Could not add button: ${String(error.message || error).slice(0, 500)}`, ephemeral: true });
   }
 }
 
