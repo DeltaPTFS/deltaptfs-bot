@@ -35,7 +35,13 @@ const {
   targetHierarchyError,
 } = require('./moderation');
 const { version: botVersion } = require('../package.json');
-const { containsDiscordInvite, isTicketChannel, memberAtOrAboveRole, messageDescription } = require('./server-logging');
+const {
+  containsDiscordInvite,
+  createMessageSnapshotCache,
+  isTicketChannel,
+  memberAtOrAboveRole,
+  messageDescription,
+} = require('./server-logging');
 
 const token = process.env.DISCORD_TOKEN?.trim();
 
@@ -46,17 +52,13 @@ if (!token) {
 
 const gatewayIntents = [
   GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMembers,
   GatewayIntentBits.GuildModeration,
   GatewayIntentBits.GuildInvites,
   GatewayIntentBits.GuildMessages,
   GatewayIntentBits.GuildMessageReactions,
+  GatewayIntentBits.MessageContent,
 ];
-if (process.env.ENABLE_GUILD_MEMBERS_INTENT === 'true') {
-  gatewayIntents.push(GatewayIntentBits.GuildMembers);
-}
-if (process.env.ENABLE_MESSAGE_CONTENT_INTENT === 'true') {
-  gatewayIntents.push(GatewayIntentBits.MessageContent);
-}
 
 const client = new Client({
   intents: gatewayIntents,
@@ -585,7 +587,8 @@ async function applyChannels(guild) {
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
   const guildConfig = await effectiveGuildConfig(member.guild.id).catch(() => config);
-  const unauthenticated = (guildConfig.unauthenticatedRoleId && member.guild.roles.cache.get(guildConfig.unauthenticatedRoleId))
+  const unauthenticated = (guildConfig.unauthenticatedRoleId
+    && await member.guild.roles.fetch(guildConfig.unauthenticatedRoleId).catch(() => null))
     || member.guild.roles.cache.find((role) =>
       ['unauthenticated | delta air lines', 'unauthenticated | delta airlines', 'unauthenticated']
         .includes(role.name.toLowerCase()));
@@ -1463,8 +1466,10 @@ client.on(Events.MessageReactionAdd, (reaction, user) => applyReactionRole(react
 client.on(Events.MessageReactionRemove, (reaction, user) => applyReactionRole(reaction, user, false));
 
 const intentionallyDeletedMessages = new Set();
+const messageSnapshots = createMessageSnapshotCache();
 
 client.on(Events.MessageCreate, async (message) => {
+  messageSnapshots.remember(message);
   if (!message.inGuild() || message.author.bot || !containsDiscordInvite(message.content)) return;
   if (isTicketChannel(message.channel)) return;
   const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
@@ -1490,14 +1495,17 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 client.on(Events.MessageDelete, async (message) => {
+  const snapshot = messageSnapshots.take(message.id);
   if (!message.guild || intentionallyDeletedMessages.delete(message.id)) return;
   await sendServerLog(message.guild, {
     color: 0xC8102E,
     title: '🗑️ Message Deleted',
     fields: [
-      { name: 'Author', value: message.author ? `${message.author} (${message.author.tag})` : 'Unknown or uncached' },
+      { name: 'Author', value: message.author
+        ? `${message.author} (${message.author.tag})`
+        : snapshot?.authorId ? `<@${snapshot.authorId}> (${snapshot.authorTag || snapshot.authorId})` : 'Unknown or uncached' },
       { name: 'Channel', value: message.channel ? `${message.channel}` : 'Unknown' },
-      { name: 'Content', value: messageDescription(message) },
+      { name: 'Deleted Message', value: messageDescription({ content: message.content || snapshot?.content }) },
     ],
     timestamp: new Date().toISOString(),
   });
@@ -1506,7 +1514,10 @@ client.on(Events.MessageDelete, async (message) => {
 client.on(Events.MessageBulkDelete, async (messages, channel) => {
   const guild = channel.guild;
   if (!guild) return;
-  const count = [...messages.keys()].filter((id) => !intentionallyDeletedMessages.delete(id)).length;
+  const count = [...messages.keys()].filter((id) => {
+    messageSnapshots.take(id);
+    return !intentionallyDeletedMessages.delete(id);
+  }).length;
   if (!count) return;
   await sendServerLog(guild, {
     color: 0xC8102E,
@@ -1520,14 +1531,17 @@ client.on(Events.MessageBulkDelete, async (messages, channel) => {
 });
 
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
-  if (!newMessage.guild || newMessage.author?.bot || oldMessage.content === newMessage.content) return;
+  const previous = messageSnapshots.get(newMessage.id);
+  const before = oldMessage.content || previous?.content || '';
+  messageSnapshots.remember(newMessage);
+  if (!newMessage.guild || newMessage.author?.bot || before === newMessage.content) return;
   await sendServerLog(newMessage.guild, {
     color: 0x236192,
     title: '✏️ Message Edited',
     fields: [
       { name: 'Author', value: newMessage.author ? `${newMessage.author} (${newMessage.author.tag})` : 'Unknown or uncached' },
       { name: 'Channel', value: `${newMessage.channel}` },
-      { name: 'Before', value: messageDescription(oldMessage).slice(0, 1024) },
+      { name: 'Before', value: messageDescription({ content: before }).slice(0, 1024) },
       { name: 'After', value: messageDescription(newMessage).slice(0, 1024) },
       { name: 'Message', value: `[Jump to message](${newMessage.url})` },
     ],
