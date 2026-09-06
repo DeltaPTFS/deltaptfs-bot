@@ -18,7 +18,7 @@ function startHealthServer(options = {}) {
     response.writeHead(statusCode, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
       service: 'delta-air-lines-ptfs-bot',
-      status: state.discordReady ? 'ready' : 'starting',
+      status: state.discordReady ? 'ready' : state.error ? 'error' : 'starting',
       discordReady: state.discordReady,
       error: state.error,
     }));

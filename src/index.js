@@ -44,16 +44,20 @@ if (!token) {
   process.exit(1);
 }
 
+const gatewayIntents = [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMembers,
+  GatewayIntentBits.GuildModeration,
+  GatewayIntentBits.GuildInvites,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.GuildMessageReactions,
+];
+if (process.env.ENABLE_MESSAGE_CONTENT_INTENT === 'true') {
+  gatewayIntents.push(GatewayIntentBits.MessageContent);
+}
+
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.MessageContent,
-  ],
+  intents: gatewayIntents,
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
 });
 const config = loadConfig();
@@ -66,6 +70,10 @@ const roblox = createRobloxService({ groupId: config.robloxGroupId });
 const roleSync = createRoleSyncService({ config, roblox });
 const authentication = createAuthenticationService({ config, database, roblox, roleSync, client, getGuildConfig: effectiveGuildConfig });
 const health = startHealthServer({ requestHandler: authentication.handleRequest });
+const discordStartupTimeout = setTimeout(() => {
+  health.markError(new Error('Discord did not become ready within 45 seconds. Check DISCORD_TOKEN and enabled gateway intents.'));
+}, 45_000);
+discordStartupTimeout.unref();
 
 const setupCommand = new SlashCommandBuilder()
   .setName('setup')
@@ -634,6 +642,8 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
+  clearTimeout(discordStartupTimeout);
+  health.markReady();
   if (database.configured) {
     try { await database.init(); } catch (error) { console.error('PostgreSQL initialization failed:', error); }
   } else {
@@ -647,7 +657,6 @@ client.once(Events.ClientReady, async (readyClient) => {
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
       deleteCommand.toJSON(),
     ]);
-    health.markReady();
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
     console.error('Discord command registration failed:', error);
@@ -655,7 +664,17 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.Error, (error) => {
+  health.markError(error);
   console.error('Discord client error:', error);
+});
+
+client.on(Events.ShardError, (error) => {
+  health.markError(error);
+  console.error('Discord gateway error:', error);
+});
+
+client.on(Events.Invalidated, () => {
+  health.markError(new Error('Discord invalidated the gateway session. Check the configured gateway intents.'));
 });
 
 async function handleSkyMiles(interaction) {
@@ -1736,6 +1755,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.login(token).catch((error) => {
+  clearTimeout(discordStartupTimeout);
   health.markError(error);
   console.error('Discord login failed. Check DISCORD_TOKEN:', error);
   setTimeout(() => process.exit(1), 1000);

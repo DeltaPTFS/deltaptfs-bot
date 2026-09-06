@@ -15,6 +15,11 @@ test('health server exposes startup and Discord-ready states', async (context) =
   const root = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(root.status, 200);
 
+  health.markError(new Error('Discord connection failed'));
+  const failed = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(failed.status, 503);
+  assert.equal((await failed.json()).status, 'error');
+
   health.markReady();
   const ready = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(ready.status, 200);

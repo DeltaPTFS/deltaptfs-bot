@@ -265,7 +265,9 @@ Members who hold Delta Leadership (`1539005030189891684`) may remove a stored co
 
 ### Server activity logs and invite protection
 
-The bot sends moderation actions, deleted messages, edited messages, revoked unauthorized invites, member departures, kicks, and bans to `<#1539005101941850274>`. Kick and ban logs ping `<@&1539005030189891684>`. To capture message content, enable the **Message Content Intent** in the Discord Developer Portal. The bot also needs **View Audit Log**, **Manage Messages**, and **Manage Server** to identify kicks and revoke unauthorized server invites.
+The bot sends moderation actions, deleted messages, edited messages, revoked unauthorized invites, member departures, kicks, and bans to `<#1539005101941850274>`. Kick and ban logs ping `<@&1539005030189891684>`. The bot also needs **View Audit Log**, **Manage Messages**, and **Manage Server** to identify kicks and revoke unauthorized server invites.
+
+`ENABLE_MESSAGE_CONTENT_INTENT` defaults to `false` so Discord cannot reject the bot at startup with a disallowed privileged-intent error. Server-invite creation is still monitored without that intent. To inspect message text, log before/after text, and remove invite links pasted into messages, first enable **Message Content Intent** under **Discord Developer Portal → Bot → Privileged Gateway Intents**, then set `ENABLE_MESSAGE_CONTENT_INTENT=true` and redeploy. The health endpoint now reports `status: "error"` with a useful reason instead of remaining at `status: "starting"` indefinitely when Discord cannot connect.
 
 Members whose highest role is below `<@&1539005067523395614>` cannot post Discord invite links or create server invites outside ticket channels. A channel is treated as a ticket when its channel name or category name contains `ticket`. Unauthorized invite messages are deleted and logged; invites created through Discord are revoked and logged.
 
