@@ -243,7 +243,7 @@ The bot remembers the Roblox rank seen at authentication and after every sync. I
 
 ### `/create-button`
 
-Only the configured Delta Leadership role (`15390050301891684`) can use `/create-button message-id:... label:... link:https://... hex:#071D49 emoji:🔗`. The command fetches an existing message in the current channel and adds the link button without posting a replacement message. Discord only permits bots to edit messages they authored, so the selected message must have been sent by this bot. Existing buttons are preserved up to Discord's component limits.
+Only the configured Delta Leadership role (`1539005030189891684`) can use `/create-button message-id:... label:... link:https://... hex:#071D49 emoji:🔗`. The command fetches an existing message in the current channel and adds the link button without posting a replacement message. Discord only permits bots to edit messages they authored, so the selected message must have been sent by this bot. Existing buttons are preserved up to Discord's component limits.
 
 The command validates HTTPS links, six-digit hex colors, Unicode emoji, and server custom emoji. Discord does not support custom hex colors on buttons themselves; link buttons use Discord's fixed link style. The required `hex` option applies the requested color to the existing message's embed accent.
 
@@ -257,11 +257,17 @@ Delta Leadership, Board of Directors, and Delta Founders may use `/timeout user:
 
 `/delete messages` searches the latest 100 messages in the current channel and deletes up to the requested number from the selected member. Discord bulk deletion excludes messages older than 14 days. The bot requires **Moderate Members**, **Kick Members**, **Ban Members**, **Manage Messages**, and **Read Message History** as applicable.
 
-The moderation defaults are connected to Delta Leadership (`15390050301891684`) and Delta Founder (`1539005297417519205`). `MODERATION_LEADERSHIP_ROLE_ID` acts as a hierarchy threshold, while `MODERATION_FOUNDER_ROLE_ID` requires direct membership for founder-only commands. You can override either environment variable if those server roles are replaced. If a configured role is temporarily unavailable, the bot falls back to the generated `Delta Leadership | Delta Air Lines` and `Delta Founder | Delta Air Lines` role names instead of locking authorized staff out.
+The moderation defaults are connected to Delta Leadership (`1539005030189891684`) and Delta Founder (`1539005297417519205`). `MODERATION_LEADERSHIP_ROLE_ID` acts as a hierarchy threshold, while `MODERATION_FOUNDER_ROLE_ID` requires direct membership for founder-only commands. You can override either environment variable if those server roles are replaced. If a configured role is temporarily unavailable, the bot falls back to the generated `Delta Leadership | Delta Air Lines` and `Delta Founder | Delta Air Lines` role names instead of locking authorized staff out.
 
 ### `/unlink user:@Member`
 
-Executives and higher may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and Authenticated, grants Unauthenticated, deletes the database record so both accounts may authenticate again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
+Members who hold Delta Leadership (`1539005030189891684`) may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and the configured Authenticated role, grants `<@&1539005067523395614>`, deletes the database record so both accounts may authenticate again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
+
+### Server activity logs and invite protection
+
+The bot sends moderation actions, deleted messages, edited messages, revoked unauthorized invites, member departures, kicks, and bans to `<#1539005101941850274>`. Kick and ban logs ping `<@&1539005030189891684>`. To capture message content, enable the **Message Content Intent** in the Discord Developer Portal. The bot also needs **View Audit Log**, **Manage Messages**, and **Manage Server** to identify kicks and revoke unauthorized server invites.
+
+Members whose highest role is below `<@&1539005067523395614>` cannot post Discord invite links or create server invites outside ticket channels. A channel is treated as a ticket when its channel name or category name contains `ticket`. Unauthorized invite messages are deleted and logged; invites created through Discord are revoked and logged.
 
 ### Roblox server-side lookup API
 

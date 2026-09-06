@@ -1,6 +1,7 @@
 require('dotenv/config');
 
 const {
+  AuditLogEvent,
   ChannelType,
   Client,
   Events,
@@ -34,6 +35,7 @@ const {
   targetHierarchyError,
 } = require('./moderation');
 const { version: botVersion } = require('../package.json');
+const { containsDiscordInvite, isTicketChannel, memberAtOrAboveRole, messageDescription } = require('./server-logging');
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -43,7 +45,15 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessageReactions],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildInvites,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.MessageContent,
+  ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
 });
 const config = loadConfig();
@@ -137,7 +147,7 @@ const authenticateCommand = new SlashCommandBuilder()
 
 const unlinkCommand = new SlashCommandBuilder()
   .setName('unlink')
-  .setDescription('Unlink a member’s Roblox authentication (Executives and higher)')
+  .setDescription('Unlink a member’s Roblox authentication (Delta Leadership)')
   .addUserOption((option) => option.setName('user').setDescription('Authenticated Discord member to unlink').setRequired(true));
 
 const authenticationConfigCommand = new SlashCommandBuilder()
@@ -582,7 +592,34 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  if (newMember.user.bot || oldMember.nickname === newMember.nickname || !database.configured) return;
+  if (newMember.user.bot) return;
+  const addedRoles = [...newMember.roles.cache.values()].filter((role) => !oldMember.roles.cache.has(role.id));
+  const removedRoles = [...oldMember.roles.cache.values()].filter((role) => !newMember.roles.cache.has(role.id));
+  if (addedRoles.length || removedRoles.length) {
+    await sendServerLog(newMember.guild, {
+      color: 0x236192,
+      title: '🎭 Member Roles Updated',
+      fields: [
+        { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
+        { name: 'Added', value: addedRoles.length ? addedRoles.map(String).join(', ').slice(0, 1024) : 'None' },
+        { name: 'Removed', value: removedRoles.length ? removedRoles.map(String).join(', ').slice(0, 1024) : 'None' },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (oldMember.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
+    await sendServerLog(newMember.guild, {
+      color: 0xC8102E,
+      title: newMember.communicationDisabledUntilTimestamp ? '⏳ Member Timed Out' : '✅ Member Timeout Removed',
+      fields: [
+        { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
+        { name: 'Until', value: newMember.communicationDisabledUntilTimestamp
+          ? `<t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>` : 'No longer timed out' },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (oldMember.nickname === newMember.nickname || !database.configured) return;
   try {
     const record = await database.getByDiscordId(newMember.id);
     const expectedNickname = record?.rp_name && record?.roblox_username
@@ -711,11 +748,32 @@ async function recordAudit(interaction, entry, embed) {
   if (database.configured) {
     try { await database.logRoleAction(entry); } catch (error) { console.error('Could not persist role audit:', error); }
   }
-  if (guildConfig.logChannelId) {
+  const logChannelId = guildConfig.logChannelId || config.logChannelId;
+  if (logChannelId) {
     try {
-      const channel = await interaction.guild.channels.fetch(guildConfig.logChannelId);
-      if (channel?.isTextBased()) await channel.send({ embeds: [embed] });
+      const channel = await interaction.guild.channels.fetch(logChannelId);
+      const pingLeadership = ['KICK', 'BAN'].includes(entry.action);
+      if (channel?.isTextBased()) await channel.send({
+        content: pingLeadership ? `<@&${config.moderationLeadershipRoleId}>` : undefined,
+        embeds: [embed],
+        allowedMentions: { roles: pingLeadership ? [config.moderationLeadershipRoleId] : [] },
+      });
     } catch (error) { console.error('Could not send staff log embed:', error); }
+  }
+}
+
+async function sendServerLog(guild, embed, pingLeadership = false) {
+  try {
+    const guildConfig = await effectiveGuildConfig(guild.id).catch(() => config);
+    const channel = await guild.channels.fetch(guildConfig.logChannelId || config.logChannelId);
+    if (!channel?.isTextBased()) return;
+    await channel.send({
+      content: pingLeadership ? `<@&${config.moderationLeadershipRoleId}>` : undefined,
+      embeds: [embed],
+      allowedMentions: { roles: pingLeadership ? [config.moderationLeadershipRoleId] : [] },
+    });
+  } catch (error) {
+    console.error('Could not send server log:', error);
   }
 }
 
@@ -1027,8 +1085,10 @@ async function handleUnlink(interaction) {
       interaction.guild.members.fetch(interaction.user.id),
       interaction.guild.members.fetch(interaction.options.getUser('user', true).id),
     ]);
-    const access = validateExecutiveAccess(interaction.guild, caller, config.executiveRoleId, 'unlink');
-    if (!access.ok) { await interaction.editReply({ embeds: [access.embed] }); return; }
+    if (!caller.roles.cache.has(config.moderationLeadershipRoleId)) {
+      await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Access Denied', description: `You must hold <@&${config.moderationLeadershipRoleId}> to use \`/unlink\`.` }] });
+      return;
+    }
     const record = await database.getByDiscordId(target.id);
     if (!record) {
       await interaction.editReply({ embeds: [{ color: 0x236192, title: 'ℹ️ No Authentication Found', description: `${target} is not linked to a Roblox account.` }] });
@@ -1036,6 +1096,13 @@ async function handleUnlink(interaction) {
     }
     const guildConfig = await effectiveGuildConfig(interaction.guildId);
     const removed = await roleSync.removeManaged(target, guildConfig);
+    if (guildConfig.authenticatedRoleId && target.roles.cache.has(guildConfig.authenticatedRoleId)) {
+      const authenticatedRole = await interaction.guild.roles.fetch(guildConfig.authenticatedRoleId);
+      if (authenticatedRole?.editable) {
+        await target.roles.remove(authenticatedRole, 'Roblox authentication unlinked');
+        removed.push(`${authenticatedRole}`);
+      }
+    }
     if (guildConfig.unauthenticatedRoleId && !target.roles.cache.has(guildConfig.unauthenticatedRoleId)) {
       const unauthenticatedRole = await interaction.guild.roles.fetch(guildConfig.unauthenticatedRoleId);
       if (!unauthenticatedRole?.editable) throw new Error('The configured Unauthenticated role is not manageable by the bot');
@@ -1378,6 +1445,133 @@ async function handleDeleteMessages(interaction) {
 
 client.on(Events.MessageReactionAdd, (reaction, user) => applyReactionRole(reaction, user, true));
 client.on(Events.MessageReactionRemove, (reaction, user) => applyReactionRole(reaction, user, false));
+
+const intentionallyDeletedMessages = new Set();
+
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.inGuild() || message.author.bot || !containsDiscordInvite(message.content)) return;
+  if (isTicketChannel(message.channel)) return;
+  const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+  if (memberAtOrAboveRole(member, config.unauthenticatedRoleId)) return;
+  try {
+    intentionallyDeletedMessages.add(message.id);
+    await message.delete();
+    setTimeout(() => intentionallyDeletedMessages.delete(message.id), 10_000).unref?.();
+    await sendServerLog(message.guild, {
+      color: 0xC8102E,
+      title: '🔗 Unauthorized Invite Removed',
+      fields: [
+        { name: 'Member', value: `${message.author} (${message.author.tag})` },
+        { name: 'Channel', value: `${message.channel}` },
+        { name: 'Message', value: messageDescription(message) },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    intentionallyDeletedMessages.delete(message.id);
+    console.error('Could not remove unauthorized invite:', error);
+  }
+});
+
+client.on(Events.MessageDelete, async (message) => {
+  if (!message.guild || intentionallyDeletedMessages.delete(message.id)) return;
+  await sendServerLog(message.guild, {
+    color: 0xC8102E,
+    title: '🗑️ Message Deleted',
+    fields: [
+      { name: 'Author', value: message.author ? `${message.author} (${message.author.tag})` : 'Unknown or uncached' },
+      { name: 'Channel', value: message.channel ? `${message.channel}` : 'Unknown' },
+      { name: 'Content', value: messageDescription(message) },
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+client.on(Events.MessageBulkDelete, async (messages, channel) => {
+  const guild = channel.guild;
+  if (!guild) return;
+  const count = [...messages.keys()].filter((id) => !intentionallyDeletedMessages.delete(id)).length;
+  if (!count) return;
+  await sendServerLog(guild, {
+    color: 0xC8102E,
+    title: '🗑️ Messages Bulk Deleted',
+    fields: [
+      { name: 'Channel', value: `${channel}` },
+      { name: 'Messages', value: String(count) },
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+  if (!newMessage.guild || newMessage.author?.bot || oldMessage.content === newMessage.content) return;
+  await sendServerLog(newMessage.guild, {
+    color: 0x236192,
+    title: '✏️ Message Edited',
+    fields: [
+      { name: 'Author', value: newMessage.author ? `${newMessage.author} (${newMessage.author.tag})` : 'Unknown or uncached' },
+      { name: 'Channel', value: `${newMessage.channel}` },
+      { name: 'Before', value: messageDescription(oldMessage).slice(0, 1024) },
+      { name: 'After', value: messageDescription(newMessage).slice(0, 1024) },
+      { name: 'Message', value: `[Jump to message](${newMessage.url})` },
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+client.on(Events.InviteCreate, async (invite) => {
+  if (!invite.guild || !invite.inviter || isTicketChannel(invite.channel)) return;
+  const member = await invite.guild.members.fetch(invite.inviter.id).catch(() => null);
+  if (memberAtOrAboveRole(member, config.unauthenticatedRoleId)) return;
+  try { await invite.delete('Invite creation is restricted below the configured access role'); } catch (error) {
+    console.error('Could not revoke unauthorized invite:', error);
+  }
+  await sendServerLog(invite.guild, {
+    color: 0xC8102E,
+    title: '🔗 Unauthorized Server Invite Revoked',
+    fields: [
+      { name: 'Created By', value: `${invite.inviter} (${invite.inviter.tag})` },
+      { name: 'Channel', value: invite.channel ? `${invite.channel}` : 'Unknown' },
+      { name: 'Invite Code', value: `\`${invite.code}\`` },
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+client.on(Events.GuildBanAdd, async (ban) => {
+  await sendServerLog(ban.guild, {
+    color: 0xC8102E,
+    title: '🔨 Member Banned',
+    fields: [
+      { name: 'Member', value: `${ban.user} (${ban.user.tag})` },
+      { name: 'Reason', value: ban.reason || 'No reason available' },
+    ],
+    timestamp: new Date().toISOString(),
+  }, true);
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  let kick = null;
+  try {
+    const logs = await member.guild.fetchAuditLogs({ type: AuditLogEvent.MemberKick, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry?.target?.id === member.id && Date.now() - entry.createdTimestamp < 10_000) kick = entry;
+  } catch (error) {
+    console.warn('Could not inspect kick audit log:', error.message);
+  }
+  await sendServerLog(member.guild, {
+    color: kick ? 0xC8102E : 0x6B7280,
+    title: kick ? '👢 Member Kicked' : '📤 Member Left',
+    fields: [
+      { name: 'Member', value: `${member.user} (${member.user.tag})` },
+      ...(kick ? [
+        { name: 'Moderator', value: kick.executor ? `${kick.executor} (${kick.executor.tag})` : 'Unknown' },
+        { name: 'Reason', value: kick.reason || 'No reason available' },
+      ] : []),
+    ],
+    timestamp: new Date().toISOString(),
+  }, Boolean(kick));
+});
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('update-remove:')) {

@@ -23,8 +23,10 @@ test('rejects malformed role mappings', () => {
 
 test('uses the Delta Leadership and Delta Founder server roles by default', () => {
   const config = loadConfig({});
-  assert.equal(config.moderationLeadershipRoleId, '15390050301891684');
+  assert.equal(config.moderationLeadershipRoleId, '1539005030189891684');
   assert.equal(config.moderationFounderRoleId, '1539005297417519205');
+  assert.equal(config.unauthenticatedRoleId, '1539005067523395614');
+  assert.equal(config.logChannelId, '1539005101941850274');
 });
 
 test('stored guild configuration overrides core roles and extends environment mappings', () => {
@@ -36,6 +38,16 @@ test('stored guild configuration overrides core roles and extends environment ma
   assert.equal(merged.authenticatedRoleId, 'authenticated');
   assert.deepEqual(merged.roleMappings, { 10: ['100'], 20: ['200'] });
   assert.deepEqual(merged.managedRoleIds, ['100', '200']);
+});
+
+test('empty stored values do not erase required server defaults', () => {
+  const base = loadConfig({});
+  const merged = mergeGuildConfig(base, {
+    authenticatedRoleId: null, unauthenticatedRoleId: null, logChannelId: null,
+    robloxGroupId: null, roleMappings: {}, managedRoleIds: [],
+  });
+  assert.equal(merged.unauthenticatedRoleId, '1539005067523395614');
+  assert.equal(merged.logChannelId, '1539005101941850274');
 });
 
 test('accepts common managed PostgreSQL URL variable names', () => {
