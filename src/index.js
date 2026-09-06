@@ -72,10 +72,6 @@ const roblox = createRobloxService({ groupId: config.robloxGroupId });
 const roleSync = createRoleSyncService({ config, roblox });
 const authentication = createAuthenticationService({ config, database, roblox, roleSync, client, getGuildConfig: effectiveGuildConfig });
 const health = startHealthServer({ requestHandler: authentication.handleRequest });
-const discordStartupTimeout = setTimeout(() => {
-  health.markError(new Error('Discord did not become ready within 45 seconds. Check DISCORD_TOKEN and enabled gateway intents.'));
-}, 45_000);
-discordStartupTimeout.unref();
 
 const setupCommand = new SlashCommandBuilder()
   .setName('setup')
@@ -644,7 +640,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
-  clearTimeout(discordStartupTimeout);
   health.markReady();
   if (database.configured) {
     try { await database.init(); } catch (error) { console.error('PostgreSQL initialization failed:', error); }
@@ -1760,15 +1755,8 @@ let reconnectTimer;
 async function connectDiscord() {
   clearTimeout(reconnectTimer);
   try {
-    await Promise.race([
-      client.login(token),
-      new Promise((_, reject) => setTimeout(
-        () => reject(new Error('Discord login timed out after 30 seconds')),
-        30_000,
-      )),
-    ]);
+    await client.login(token);
   } catch (error) {
-    clearTimeout(discordStartupTimeout);
     health.markError(error);
     console.error('Discord login failed. The bot will retry in 15 seconds:', error);
     client.destroy();

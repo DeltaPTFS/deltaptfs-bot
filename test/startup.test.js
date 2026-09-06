@@ -17,9 +17,11 @@ test('privileged guild-members intent is opt-in and failed logins retry without 
   assert.doesNotMatch(source, /Discord login failed[\s\S]{0,300}process\.exit/);
 });
 
-test('gateway failures update health state instead of staying on starting forever', () => {
+test('gateway failures update health state without an artificial login deadline', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
   assert.match(source, /Events\.ShardError/);
   assert.match(source, /Events\.Invalidated/);
-  assert.match(source, /did not become ready within 45 seconds/);
+  assert.match(source, /await client\.login\(token\)/);
+  assert.doesNotMatch(source, /Discord login timed out/);
+  assert.doesNotMatch(source, /discordStartupTimeout/);
 });
