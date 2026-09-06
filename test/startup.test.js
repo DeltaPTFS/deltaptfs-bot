@@ -9,6 +9,14 @@ test('privileged message-content intent is opt-in so Discord can start normally'
   assert.doesNotMatch(source, /GuildMessageReactions,\s*GatewayIntentBits\.MessageContent/);
 });
 
+test('privileged guild-members intent is opt-in and failed logins retry without exiting', () => {
+  const source = fs.readFileSync('src/index.js', 'utf8');
+  assert.match(source, /ENABLE_GUILD_MEMBERS_INTENT === 'true'/);
+  assert.match(source, /gatewayIntents\.push\(GatewayIntentBits\.GuildMembers\)/);
+  assert.match(source, /setTimeout\(connectDiscord, 15_000\)/);
+  assert.doesNotMatch(source, /Discord login failed[\s\S]{0,300}process\.exit/);
+});
+
 test('gateway failures update health state instead of staying on starting forever', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
   assert.match(source, /Events\.ShardError/);

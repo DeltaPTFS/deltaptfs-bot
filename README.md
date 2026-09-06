@@ -269,6 +269,8 @@ The bot sends moderation actions, deleted messages, edited messages, revoked una
 
 `ENABLE_MESSAGE_CONTENT_INTENT` defaults to `false` so Discord cannot reject the bot at startup with a disallowed privileged-intent error. Server-invite creation is still monitored without that intent. To inspect message text, log before/after text, and remove invite links pasted into messages, first enable **Message Content Intent** under **Discord Developer Portal → Bot → Privileged Gateway Intents**, then set `ENABLE_MESSAGE_CONTENT_INTENT=true` and redeploy. The health endpoint now reports `status: "error"` with a useful reason instead of remaining at `status: "starting"` indefinitely when Discord cannot connect.
 
+`ENABLE_GUILD_MEMBERS_INTENT` also defaults to `false` so the bot can connect even when Discord has not approved the privileged **Server Members Intent**. Slash-command authentication and member fetching continue through Discord's REST API. Enable **Server Members Intent** in the Developer Portal and set `ENABLE_GUILD_MEMBERS_INTENT=true` only when automatic join-role assignment, nickname enforcement, and complete member-update logging are required. Login failures no longer cause a rapid Render restart loop: the health endpoint retains the actual error and the bot retries Discord every 15 seconds.
+
 Members whose highest role is below `<@&1539005067523395614>` cannot post Discord invite links or create server invites outside ticket channels. A channel is treated as a ticket when its channel name or category name contains `ticket`. Unauthorized invite messages are deleted and logged; invites created through Discord are revoked and logged.
 
 ### Roblox server-side lookup API

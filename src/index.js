@@ -37,7 +37,7 @@ const {
 const { version: botVersion } = require('../package.json');
 const { containsDiscordInvite, isTicketChannel, memberAtOrAboveRole, messageDescription } = require('./server-logging');
 
-const token = process.env.DISCORD_TOKEN;
+const token = process.env.DISCORD_TOKEN?.trim();
 
 if (!token) {
   console.error('DISCORD_TOKEN is required. Add it to your environment before starting the bot.');
@@ -46,12 +46,14 @@ if (!token) {
 
 const gatewayIntents = [
   GatewayIntentBits.Guilds,
-  GatewayIntentBits.GuildMembers,
   GatewayIntentBits.GuildModeration,
   GatewayIntentBits.GuildInvites,
   GatewayIntentBits.GuildMessages,
   GatewayIntentBits.GuildMessageReactions,
 ];
+if (process.env.ENABLE_GUILD_MEMBERS_INTENT === 'true') {
+  gatewayIntents.push(GatewayIntentBits.GuildMembers);
+}
 if (process.env.ENABLE_MESSAGE_CONTENT_INTENT === 'true') {
   gatewayIntents.push(GatewayIntentBits.MessageContent);
 }
@@ -1754,9 +1756,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.login(token).catch((error) => {
-  clearTimeout(discordStartupTimeout);
-  health.markError(error);
-  console.error('Discord login failed. Check DISCORD_TOKEN:', error);
-  setTimeout(() => process.exit(1), 1000);
-});
+let reconnectTimer;
+async function connectDiscord() {
+  clearTimeout(reconnectTimer);
+  try {
+    await Promise.race([
+      client.login(token),
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error('Discord login timed out after 30 seconds')),
+        30_000,
+      )),
+    ]);
+  } catch (error) {
+    clearTimeout(discordStartupTimeout);
+    health.markError(error);
+    console.error('Discord login failed. The bot will retry in 15 seconds:', error);
+    client.destroy();
+    reconnectTimer = setTimeout(connectDiscord, 15_000);
+  }
+}
+
+connectDiscord();
