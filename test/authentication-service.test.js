@@ -23,7 +23,8 @@ function setup(profileSub = '123', guildId = 'guild') {
     consumePending: async (stateHash) => { const value = pending.get(stateHash); pending.delete(stateHash); return value ? { discord_user_id: value.discordUserId, guild_id: value.guildId, expected_roblox_user_id: value.robloxUserId, code_verifier: value.codeVerifier, rp_name: value.rpName } : null; },
     saveAuthentication: async (entry) => { const record = { discord_user_id: entry.discordUserId, roblox_user_id: entry.robloxUserId, roblox_username: entry.robloxUsername, rp_name: entry.rpName }; records.set(`d:${entry.discordUserId}`, record); records.set(`r:${entry.robloxUserId}`, record); return record; },
   };
-  const member = { toString: () => '<@discord>', manageable: true, setNickname: async (name) => { member.nickname = name; }, roles: { cache: new Map(), add: async () => {} }, send: async () => {} };
+  const directMessages = [];
+  const member = { toString: () => '<@discord>', manageable: true, setNickname: async (name) => { member.nickname = name; }, roles: { cache: new Map(), add: async () => {} }, send: async (payload) => directMessages.push(payload) };
   const config = {
     guildId, authenticatedRoleId: 'authenticated', unauthenticatedRoleId: 'unauthenticated', robloxGroupId: '50', roleMappings: {}, managedRoleIds: [], authenticationApiKey: 'api-secret',
     robloxOauthClientId: 'client', robloxOauthClientSecret: 'secret', robloxOauthRedirectUri: 'https://bot.example/auth/roblox/callback',
@@ -36,11 +37,11 @@ function setup(profileSub = '123', guildId = 'guild') {
     roleSync: { sync: async () => ({ membership: null, added: [], removed: [] }) },
     client: { guilds: { cache: new Map([['guild', {}]]), fetch: async () => ({ members: { fetch: async () => member }, roles: { fetch: async () => ({ id: 'authenticated', editable: true }) } }) } },
   });
-  return { service, database, records, pending, member };
+  return { service, database, records, pending, member, directMessages };
 }
 
 test('authentication begins with persistent state and completes only for the authorized Roblox ID', async () => {
-  const { service, records, pending, member } = setup();
+  const { service, records, pending, member, directMessages } = setup();
   const started = await service.begin('discord', 'guild', 'DeltaPilot', 'Jordan S.');
   const authorization = new URL(started.payload.components[0].components[0].url);
   const state = authorization.searchParams.get('state');
@@ -52,6 +53,9 @@ test('authentication begins with persistent state and completes only for the aut
   assert.equal(records.get('d:discord').roblox_user_id, '123');
   assert.equal(records.get('d:discord').rp_name, 'Jordan S.');
   assert.equal(member.nickname, 'Jordan S. (@DeltaPilot)');
+  assert.match(directMessages[0].content, /<:Heart:1541639571266080819> \*\*Welcome to Delta\.\*\*/);
+  assert.match(directMessages[0].content, /<:WingPinLogo:1540927847709802607>/);
+  assert.equal(directMessages[0].embeds, undefined);
 });
 
 test('authentication lookup API requires its server-side API key', async () => {

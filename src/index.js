@@ -35,6 +35,7 @@ const {
   targetHierarchyError,
 } = require('./moderation');
 const { version: botVersion } = require('../package.json');
+const { newsletterContent } = require('./member-messages');
 const {
   containsDiscordInvite,
   createMessageSnapshotCache,
@@ -236,6 +237,11 @@ const deleteCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) => subcommand.setName('messages').setDescription('Delete recent messages from one member')
     .addUserOption((option) => option.setName('user').setDescription('Member whose messages will be deleted').setRequired(true))
     .addIntegerOption((option) => option.setName('amount').setDescription('Maximum messages to delete').setMinValue(1).setMaxValue(100).setRequired(true)));
+
+const newsletterCommand = new SlashCommandBuilder()
+  .setName('newsletter')
+  .setDescription('DM a newsletter to every non-bot server member (Delta Founders only)')
+  .addStringOption((option) => option.setName('message').setDescription('Newsletter content sent to every member').setRequired(true).setMaxLength(2000));
 
 function normalizedName(name) {
   return name.toLowerCase().replaceAll(' ', '-');
@@ -659,7 +665,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
-      deleteCommand.toJSON(),
+      deleteCommand.toJSON(), newsletterCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -1483,6 +1489,59 @@ async function handleDeleteMessages(interaction) {
   }
 }
 
+const activeNewsletters = new Set();
+
+async function handleNewsletter(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Run this command inside the Delta server.', ephemeral: true });
+    return;
+  }
+  const caller = await interaction.guild.members.fetch(interaction.user.id);
+  if (!caller.roles.cache.has(config.moderationFounderRoleId)) {
+    await interaction.reply({ content: `Only <@&${config.moderationFounderRoleId}> may send server newsletters.`, ephemeral: true });
+    return;
+  }
+  if (activeNewsletters.has(interaction.guildId)) {
+    await interaction.reply({ content: 'A newsletter is already being delivered in this server. Please wait for it to finish.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  activeNewsletters.add(interaction.guildId);
+  try {
+    const content = newsletterContent(interaction.options.getString('message', true));
+    const members = await interaction.guild.members.fetch();
+    let delivered = 0;
+    let failed = 0;
+    for (const member of members.values()) {
+      if (member.user.bot) continue;
+      try {
+        await member.send({ content, allowedMentions: { parse: [] } });
+        delivered += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    const summary = {
+      color: 0x071D49,
+      title: '📰 Newsletter Delivery Complete',
+      fields: [
+        { name: 'Delivered', value: String(delivered), inline: true },
+        { name: 'Failed/DMs Closed', value: String(failed), inline: true },
+        { name: 'Executed By', value: `${caller} (${caller.user.tag})` },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+    await sendServerLog(interaction.guild, summary);
+    await interaction.editReply({ embeds: [summary] });
+  } catch (error) {
+    console.error('Newsletter delivery failed:', error);
+    await interaction.editReply(`❌ Newsletter failed: ${String(error.message || error).slice(0, 500)}`);
+  } finally {
+    activeNewsletters.delete(interaction.guildId);
+  }
+}
+
 client.on(Events.MessageReactionAdd, (reaction, user) => applyReactionRole(reaction, user, true));
 client.on(Events.MessageReactionRemove, (reaction, user) => applyReactionRole(reaction, user, false));
 
@@ -1717,6 +1776,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'delete') {
     await handleDeleteMessages(interaction);
+    return;
+  }
+  if (interaction.commandName === 'newsletter') {
+    await handleNewsletter(interaction);
     return;
   }
   if (interaction.commandName === 'authentication-panel') {

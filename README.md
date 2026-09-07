@@ -275,6 +275,12 @@ Members whose highest role is below `<@&1539005067523395614>` cannot post Discor
 
 Successful authentication permanently grants `<@&1539005066512572568>` as the configured Authenticated role and removes the onboarding role `<@&1539005067523395614>`. Subsequent `/getrole` synchronization never removes the Authenticated role, even if it accidentally appears in `MANAGED_ROLE_IDS`; only an authorized `/unlink` or the Delta Basic reauthentication reset can remove it.
 
+After authentication succeeds, the bot sends the member a normal-message welcome DM using the configured Heart and Wing Pin custom emojis, the Delta postal address, server exploration guidance, and SkyTeam closing provided by Leadership. If the member has DMs disabled, authentication still completes successfully.
+
+### `/newsletter message:...`
+
+Only members who directly hold Delta Founder (`1539005297417519205`) can run `/newsletter`. The command privately DMs the supplied message (up to Discord's 2,000-character limit) to every non-bot member in the server, processes deliveries sequentially through Discord's rate limiter, prevents overlapping newsletter runs, and returns delivered/failed totals. Members with closed DMs count as failed without stopping the remaining delivery. The completion summary and executor are also written to the server log channel.
+
 ### Roblox server-side lookup API
 
 Roblox server scripts may call `GET /api/authentication/{roblox_user_id}` with `x-api-key: <AUTHENTICATION_API_KEY>` from server-side `HttpService`. The endpoint returns only authentication state and the linked IDs. Missing or incorrect credentials receive HTTP 401. Never place the Discord token, database URL, OAuth client secret, or other private credentials in Roblox Studio; only the dedicated lookup API key should be used, and only from server scripts.
