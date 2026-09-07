@@ -39,4 +39,7 @@ test('server logging events and configured channels are wired into the bot', () 
   assert.match(source, /target\.roles\.add\(unauthenticatedRole/);
   assert.match(source, /roles\.fetch\(guildConfig\.unauthenticatedRoleId\)/);
   assert.match(source, /messageSnapshots\.take\(message\.id\)/);
+  assert.match(source, /AuditLogEvent\.MessageDelete/);
+  assert.match(source, /AuditLogEvent\.MemberRoleUpdate/);
+  assert.match(source, /name: 'Executed By'/);
 });

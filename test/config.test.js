@@ -23,6 +23,7 @@ test('rejects malformed role mappings', () => {
 
 test('uses the Delta Leadership and Delta Founder server roles by default', () => {
   const config = loadConfig({});
+  assert.equal(config.authenticatedRoleId, '1539005066512572568');
   assert.equal(config.moderationLeadershipRoleId, '1539005030189891684');
   assert.equal(config.moderationFounderRoleId, '1539005297417519205');
   assert.equal(config.unauthenticatedRoleId, '1539005067523395614');

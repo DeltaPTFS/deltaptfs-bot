@@ -34,7 +34,7 @@ function loadConfig(environment = process.env) {
       '1539005027748945971',
       ...additionallyAuthorizedUpdateRoles,
     ])],
-    authenticatedRoleId: environment.AUTHENTICATED_ROLE_ID,
+    authenticatedRoleId: environment.AUTHENTICATED_ROLE_ID || '1539005066512572568',
     unauthenticatedRoleId: environment.UNAUTHENTICATED_ROLE_ID || '1539005067523395614',
     guildId: environment.GUILD_ID,
     logChannelId: environment.LOG_CHANNEL_ID || '1539005101941850274',

@@ -267,11 +267,13 @@ Members who hold Delta Leadership (`1539005030189891684`) may remove a stored co
 
 The bot sends moderation actions, deleted messages, edited messages, revoked unauthorized invites, member departures, kicks, and bans to `<#1539005101941850274>`. Kick and ban logs ping `<@&1539005030189891684>`. The bot also needs **View Audit Log**, **Manage Messages**, and **Manage Server** to identify kicks and revoke unauthorized server invites.
 
-The bot requests **Server Members Intent** so every new member can immediately receive `<@&1539005067523395614>`, and **Message Content Intent** so deleted and edited message logs contain the actual text. Enable both switches under **Discord Developer Portal → Bot → Privileged Gateway Intents**. The bot keeps an in-memory snapshot of the latest 10,000 messages it observes, allowing a deletion event to recover the text even when Discord supplies a partial deleted-message object. Messages deleted before the bot observed them—or while the bot was offline—cannot be recovered from Discord.
+The bot requests **Server Members Intent** so every new member can immediately receive `<@&1539005067523395614>`, and **Message Content Intent** so deleted and edited message logs contain the actual text. Enable both switches under **Discord Developer Portal → Bot → Privileged Gateway Intents**. The bot keeps an in-memory snapshot of the latest 10,000 messages it observes, allowing a deletion event to recover the text even when Discord supplies a partial deleted-message object. Messages deleted before the bot observed them—or while the bot was offline—cannot be recovered from Discord. Logs identify the executor from Discord's audit log when one exists; self-edits identify the author, self-deletions fall back to the author, and automatic invite enforcement identifies the bot.
 
 Login failures do not cause a rapid Render restart loop: the health endpoint retains the actual Discord error and the bot retries rejected connections every 15 seconds. There is intentionally no artificial login deadline, because Render or Discord can take longer than 30 seconds to establish the gateway connection.
 
 Members whose highest role is below `<@&1539005067523395614>` cannot post Discord invite links or create server invites outside ticket channels. A channel is treated as a ticket when its channel name or category name contains `ticket`. Unauthorized invite messages are deleted and logged; invites created through Discord are revoked and logged.
+
+Successful authentication permanently grants `<@&1539005066512572568>` as the configured Authenticated role and removes the onboarding role `<@&1539005067523395614>`. Subsequent `/getrole` synchronization never removes the Authenticated role, even if it accidentally appears in `MANAGED_ROLE_IDS`; only an authorized `/unlink` or the Delta Basic reauthentication reset can remove it.
 
 ### Roblox server-side lookup API
 

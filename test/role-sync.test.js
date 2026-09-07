@@ -54,3 +54,22 @@ test('role sync preserves managed roles assigned manually by leadership', async 
   assert.equal(cache.has('manual'), true);
   assert.deepEqual(result.removed, []);
 });
+
+test('role sync never removes the authenticated role after successful authentication', async () => {
+  const authenticated = { id: 'authenticated', name: 'Authenticated', position: 9, managed: false };
+  const cache = collection([[authenticated.id, authenticated]]);
+  const member = {
+    guild: {
+      members: { me: { roles: { highest: { position: 100 } } } },
+      roles: { cache: collection([[authenticated.id, authenticated]]), fetch: async () => authenticated },
+    },
+    roles: { cache, add: async () => {}, remove: async () => { throw new Error('authenticated role was removed'); } },
+  };
+  const service = createRoleSyncService({
+    config: { authenticatedRoleId: 'authenticated', roleMappings: {}, managedRoleIds: ['authenticated'] },
+    roblox: { getGroupMembership: async () => null },
+  });
+  const result = await service.sync(member, '123');
+  assert.equal(cache.has('authenticated'), true);
+  assert.deepEqual(result.removed, []);
+});

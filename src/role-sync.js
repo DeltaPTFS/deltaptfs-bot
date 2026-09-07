@@ -24,7 +24,8 @@ function createRoleSyncService({ config, roblox }) {
     }
 
     for (const roleId of managedIds) {
-      if (desiredIds.has(roleId) || protectedIds.has(String(roleId)) || !member.roles.cache.has(roleId)) continue;
+      if (String(roleId) === String(effectiveConfig.authenticatedRoleId)
+        || desiredIds.has(roleId) || protectedIds.has(String(roleId)) || !member.roles.cache.has(roleId)) continue;
       const role = member.guild.roles.cache.get(roleId) ?? await member.guild.roles.fetch(roleId);
       if (!role || role.managed || role.position >= botMember.roles.highest.position) {
         throw new Error(`The bot cannot remove managed role ${role?.name ?? roleId}`);

@@ -605,6 +605,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   const addedRoles = [...newMember.roles.cache.values()].filter((role) => !oldMember.roles.cache.has(role.id));
   const removedRoles = [...oldMember.roles.cache.values()].filter((role) => !newMember.roles.cache.has(role.id));
   if (addedRoles.length || removedRoles.length) {
+    const actor = await recentAuditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
     await sendServerLog(newMember.guild, {
       color: 0x236192,
       title: '🎭 Member Roles Updated',
@@ -612,11 +613,13 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
         { name: 'Added', value: addedRoles.length ? addedRoles.map(String).join(', ').slice(0, 1024) : 'None' },
         { name: 'Removed', value: removedRoles.length ? removedRoles.map(String).join(', ').slice(0, 1024) : 'None' },
+        { name: 'Executed By', value: executedBy(actor) },
       ],
       timestamp: new Date().toISOString(),
     });
   }
   if (oldMember.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
+    const actor = await recentAuditActor(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
     await sendServerLog(newMember.guild, {
       color: 0xC8102E,
       title: newMember.communicationDisabledUntilTimestamp ? '⏳ Member Timed Out' : '✅ Member Timeout Removed',
@@ -624,6 +627,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
         { name: 'Until', value: newMember.communicationDisabledUntilTimestamp
           ? `<t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>` : 'No longer timed out' },
+        { name: 'Executed By', value: executedBy(actor) },
       ],
       timestamp: new Date().toISOString(),
     });
@@ -794,6 +798,23 @@ async function sendServerLog(guild, embed, pingLeadership = false) {
   } catch (error) {
     console.error('Could not send server log:', error);
   }
+}
+
+async function recentAuditActor(guild, type, targetId) {
+  try {
+    const logs = await guild.fetchAuditLogs({ type, limit: 6 });
+    const entry = logs.entries.find((candidate) =>
+      String(candidate.target?.id) === String(targetId)
+      && Date.now() - candidate.createdTimestamp < 15_000);
+    return entry?.executor || null;
+  } catch (error) {
+    console.warn(`Could not resolve audit executor for ${type}:`, error.message);
+    return null;
+  }
+}
+
+function executedBy(user, fallback = 'Unknown (audit entry unavailable)') {
+  return user ? `${user} (${user.tag})` : fallback;
 }
 
 async function handleAuthenticate(interaction) {
@@ -1485,6 +1506,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'Member', value: `${message.author} (${message.author.tag})` },
         { name: 'Channel', value: `${message.channel}` },
         { name: 'Message', value: messageDescription(message) },
+        { name: 'Executed By', value: `${client.user} (automatic invite enforcement)` },
       ],
       timestamp: new Date().toISOString(),
     });
@@ -1497,6 +1519,10 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.MessageDelete, async (message) => {
   const snapshot = messageSnapshots.take(message.id);
   if (!message.guild || intentionallyDeletedMessages.delete(message.id)) return;
+  const authorId = message.author?.id || snapshot?.authorId;
+  const actor = authorId
+    ? await recentAuditActor(message.guild, AuditLogEvent.MessageDelete, authorId)
+    : null;
   await sendServerLog(message.guild, {
     color: 0xC8102E,
     title: '🗑️ Message Deleted',
@@ -1506,6 +1532,8 @@ client.on(Events.MessageDelete, async (message) => {
         : snapshot?.authorId ? `<@${snapshot.authorId}> (${snapshot.authorTag || snapshot.authorId})` : 'Unknown or uncached' },
       { name: 'Channel', value: message.channel ? `${message.channel}` : 'Unknown' },
       { name: 'Deleted Message', value: messageDescription({ content: message.content || snapshot?.content }) },
+      { name: 'Executed By', value: executedBy(actor, message.author
+        ? `${message.author} (${message.author.tag}) — likely self-deleted` : 'Unknown (audit entry unavailable)') },
     ],
     timestamp: new Date().toISOString(),
   });
@@ -1519,12 +1547,14 @@ client.on(Events.MessageBulkDelete, async (messages, channel) => {
     return !intentionallyDeletedMessages.delete(id);
   }).length;
   if (!count) return;
+  const actor = await recentAuditActor(guild, AuditLogEvent.MessageBulkDelete, channel.id);
   await sendServerLog(guild, {
     color: 0xC8102E,
     title: '🗑️ Messages Bulk Deleted',
     fields: [
       { name: 'Channel', value: `${channel}` },
       { name: 'Messages', value: String(count) },
+      { name: 'Executed By', value: executedBy(actor) },
     ],
     timestamp: new Date().toISOString(),
   });
@@ -1543,6 +1573,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
       { name: 'Channel', value: `${newMessage.channel}` },
       { name: 'Before', value: messageDescription({ content: before }).slice(0, 1024) },
       { name: 'After', value: messageDescription(newMessage).slice(0, 1024) },
+      { name: 'Executed By', value: executedBy(newMessage.author) },
       { name: 'Message', value: `[Jump to message](${newMessage.url})` },
     ],
     timestamp: new Date().toISOString(),
@@ -1563,18 +1594,22 @@ client.on(Events.InviteCreate, async (invite) => {
       { name: 'Created By', value: `${invite.inviter} (${invite.inviter.tag})` },
       { name: 'Channel', value: invite.channel ? `${invite.channel}` : 'Unknown' },
       { name: 'Invite Code', value: `\`${invite.code}\`` },
+      { name: 'Executed By', value: executedBy(invite.inviter) },
+      { name: 'Revoked By', value: `${client.user} (automatic invite enforcement)` },
     ],
     timestamp: new Date().toISOString(),
   });
 });
 
 client.on(Events.GuildBanAdd, async (ban) => {
+  const actor = await recentAuditActor(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
   await sendServerLog(ban.guild, {
     color: 0xC8102E,
     title: '🔨 Member Banned',
     fields: [
       { name: 'Member', value: `${ban.user} (${ban.user.tag})` },
       { name: 'Reason', value: ban.reason || 'No reason available' },
+      { name: 'Executed By', value: executedBy(actor) },
     ],
     timestamp: new Date().toISOString(),
   }, true);
@@ -1598,6 +1633,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
         { name: 'Moderator', value: kick.executor ? `${kick.executor} (${kick.executor.tag})` : 'Unknown' },
         { name: 'Reason', value: kick.reason || 'No reason available' },
       ] : []),
+      ...(!kick ? [{ name: 'Executed By', value: 'Member departure (not a moderation action)' }] : []),
     ],
     timestamp: new Date().toISOString(),
   }, Boolean(kick));
