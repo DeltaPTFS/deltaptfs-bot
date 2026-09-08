@@ -19,7 +19,18 @@ test('resolves usernames and selects configured group membership by immutable ID
 });
 
 test('validates usernames and reports Roblox API failures', async () => {
-  const service = createRobloxService({ fetchImpl: async () => ({ ok: false, status: 503 }) });
+  const service = createRobloxService({ fetchImpl: async () => ({ ok: false, status: 503, headers: { get: () => '0' } }) });
   await assert.rejects(service.getUserByUsername('bad name!'), /valid Roblox username/);
   await assert.rejects(service.getUsernameFromUserId(123), /HTTP 503/);
+});
+
+test('retries Roblox rate limits and succeeds without losing authentication progress', async () => {
+  let attempts = 0;
+  const service = createRobloxService({ fetchImpl: async () => {
+    attempts += 1;
+    if (attempts < 3) return { ok: false, status: 429, headers: { get: () => '0' } };
+    return { ok: true, status: 200, json: async () => ({ id: 123, name: 'DeltaPilot' }) };
+  } });
+  assert.equal((await service.getUsernameFromUserId(123)).name, 'DeltaPilot');
+  assert.equal(attempts, 3);
 });

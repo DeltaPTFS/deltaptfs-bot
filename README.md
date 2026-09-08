@@ -263,6 +263,8 @@ The moderation defaults are connected to Delta Leadership (`1539005030189891684`
 
 Members who hold Delta Leadership (`1539005030189891684`) may remove a stored connection. Unlink removes only `MANAGED_ROLE_IDS` and the configured Authenticated role, grants `<@&1539005067523395614>`, deletes the database record so both accounts may authenticate again, and creates an audit record/log-channel embed. Unrelated staff and community roles are preserved.
 
+If `/unlink user:@Member` cannot find a record under that Discord ID, it still repairs the member's Discord authentication roles instead of stopping. It also checks a Roblox username stored in the member's formatted nickname. For a stale or mismatched connection, Leadership can run `/unlink user:@Member roblox-username:ExactRobloxUsername`; the bot resolves the immutable Roblox ID, removes the database record even when it points at a different old Discord ID, and frees both accounts to authenticate again.
+
 ### Server activity logs and invite protection
 
 The bot sends moderation actions, deleted messages, edited messages, revoked unauthorized invites, member departures, kicks, and bans to `<#1539005101941850274>`. Kick and ban logs ping `<@&1539005030189891684>`. The bot also needs **View Audit Log**, **Manage Messages**, and **Manage Server** to identify kicks and revoke unauthorized server invites.
@@ -276,6 +278,8 @@ Members whose highest role is below `<@&1539005067523395614>` cannot post Discor
 Successful authentication permanently grants `<@&1539005066512572568>` as the configured Authenticated role and removes the onboarding role `<@&1539005067523395614>`. Subsequent `/getrole` synchronization never removes the Authenticated role, even if it accidentally appears in `MANAGED_ROLE_IDS`; only an authorized `/unlink` or the Delta Basic reauthentication reset can remove it.
 
 After authentication succeeds, the bot sends the member a normal-message welcome DM using the configured Heart and Wing Pin custom emojis, the Delta postal address, server exploration guidance, and SkyTeam closing provided by Leadership. If the member has DMs disabled, authentication still completes successfully.
+
+Roblox API and OAuth requests automatically honor `Retry-After` and retry temporary HTTP 429 and server failures with bounded backoff. If Roblox remains rate limited after five attempts, the member receives a clear wait-and-retry message rather than a misleading account-link result.
 
 ### `/newsletter message:...`
 

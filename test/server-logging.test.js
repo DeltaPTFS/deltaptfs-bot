@@ -36,7 +36,7 @@ test('server logging events and configured channels are wired into the bot', () 
     assert.match(source, new RegExp(`Events\\.${event}`));
   }
   assert.match(source, /caller\.roles\.cache\.has\(config\.moderationLeadershipRoleId\)/);
-  assert.match(source, /target\.roles\.add\(unauthenticatedRole/);
+  assert.match(source, /memberToReset\.roles\.add\(unauthenticatedRole/);
   assert.match(source, /roles\.fetch\(guildConfig\.unauthenticatedRoleId\)/);
   assert.match(source, /messageSnapshots\.take\(message\.id\)/);
   assert.match(source, /AuditLogEvent\.MessageDelete/);

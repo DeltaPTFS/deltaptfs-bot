@@ -46,6 +46,21 @@ function validateRpName(firstName, lastInitial, confirmation) {
 }
 
 function createAuthenticationService({ config, database, roblox, roleSync, client, getGuildConfig = async () => config, fetchImpl = global.fetch }) {
+  async function oauthRequest(url, options, label, attempt = 0) {
+    const response = await fetchImpl(url, { ...options, signal: AbortSignal.timeout(8000) });
+    if ((response.status === 429 || response.status >= 500) && attempt < 4) {
+      const retryAfter = Number(response.headers?.get?.('retry-after'));
+      const delay = Number.isFinite(retryAfter) && retryAfter >= 0
+        ? Math.min(retryAfter * 1000, 10_000)
+        : Math.min(500 * (2 ** attempt), 10_000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return oauthRequest(url, options, label, attempt + 1);
+    }
+    if (response.status === 429) throw new Error('Roblox authentication is temporarily rate limited. Wait one minute, then use `/authenticate` again.');
+    if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+    return response;
+  }
+
   function configurationIssues() {
     const redirectIssue = validateOAuthRedirectUri(config.robloxOauthRedirectUri);
     return [
@@ -109,18 +124,15 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
   }
 
   async function exchangeCode(code, codeVerifier) {
-    const response = await fetchImpl('https://apis.roblox.com/oauth/v1/token', {
+    const response = await oauthRequest('https://apis.roblox.com/oauth/v1/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'authorization_code', code, client_id: config.robloxOauthClientId, client_secret: config.robloxOauthClientSecret, redirect_uri: config.robloxOauthRedirectUri, code_verifier: codeVerifier }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) throw new Error(`Roblox OAuth token exchange returned HTTP ${response.status}`);
+    }, 'Roblox OAuth token exchange');
     const tokens = await response.json();
-    const profileResponse = await fetchImpl('https://apis.roblox.com/oauth/v1/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }, signal: AbortSignal.timeout(8000),
-    });
-    if (!profileResponse.ok) throw new Error(`Roblox OAuth profile returned HTTP ${profileResponse.status}`);
+    const profileResponse = await oauthRequest('https://apis.roblox.com/oauth/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    }, 'Roblox OAuth profile');
     return profileResponse.json();
   }
 

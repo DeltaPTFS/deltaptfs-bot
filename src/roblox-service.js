@@ -1,4 +1,12 @@
 const API_TIMEOUT_MS = 8000;
+const MAX_ATTEMPTS = 5;
+
+function retryDelayMs(response, attempt) {
+  const supplied = response.headers?.get?.('retry-after');
+  const seconds = Number(supplied);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 10_000);
+  return Math.min(500 * (2 ** attempt), 10_000);
+}
 
 function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
   async function request(url, options = {}, attempt = 0) {
@@ -8,11 +16,11 @@ function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
     } catch (error) {
       throw new Error(error.name === 'TimeoutError' ? 'Roblox API request timed out' : `Roblox API request failed: ${error.message}`);
     }
-    if (response.status === 429 && attempt < 2) {
-      const seconds = Math.min(Number(response.headers?.get?.('retry-after')) || 1, 5);
-      await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+    if ((response.status === 429 || response.status >= 500) && attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs(response, attempt)));
       return request(url, options, attempt + 1);
     }
+    if (response.status === 429) throw new Error('Roblox is temporarily rate limiting authentication. Please wait a minute and try again.');
     if (!response.ok) throw new Error(`Roblox API returned HTTP ${response.status}`);
     return response.json();
   }
@@ -43,4 +51,4 @@ function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
   return { getUserByUsername, getUsernameFromUserId, getUserGroups, getGroupMembership, request };
 }
 
-module.exports = { API_TIMEOUT_MS, createRobloxService };
+module.exports = { API_TIMEOUT_MS, MAX_ATTEMPTS, createRobloxService, retryDelayMs };

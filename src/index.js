@@ -157,7 +157,8 @@ const authenticateCommand = new SlashCommandBuilder()
 const unlinkCommand = new SlashCommandBuilder()
   .setName('unlink')
   .setDescription('Unlink a member’s Roblox authentication (Delta Leadership)')
-  .addUserOption((option) => option.setName('user').setDescription('Authenticated Discord member to unlink').setRequired(true));
+  .addUserOption((option) => option.setName('user').setDescription('Authenticated Discord member to unlink').setRequired(true))
+  .addStringOption((option) => option.setName('roblox-username').setDescription('Optional Roblox username for repairing an orphaned link'));
 
 const authenticationConfigCommand = new SlashCommandBuilder()
   .setName('authentication-config')
@@ -1135,32 +1136,43 @@ async function handleUnlink(interaction) {
       await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Access Denied', description: `You must hold <@&${config.moderationLeadershipRoleId}> to use \`/unlink\`.` }] });
       return;
     }
-    const record = await database.getByDiscordId(target.id);
-    if (!record) {
-      await interaction.editReply({ embeds: [{ color: 0x236192, title: 'ℹ️ No Authentication Found', description: `${target} is not linked to a Roblox account.` }] });
-      return;
+    let record = await database.getByDiscordId(target.id);
+    const suppliedUsername = interaction.options.getString('roblox-username')?.trim();
+    const nicknameUsername = target.displayName?.match(/\(@([A-Za-z0-9_]{3,20})\)$/)?.[1];
+    const repairUsername = suppliedUsername || nicknameUsername;
+    if (!record && repairUsername) {
+      const robloxUser = await roblox.getUserByUsername(repairUsername);
+      record = await database.getByRobloxId(robloxUser.id);
     }
     const guildConfig = await effectiveGuildConfig(interaction.guildId);
-    const removed = await roleSync.removeManaged(target, guildConfig);
-    if (guildConfig.authenticatedRoleId && target.roles.cache.has(guildConfig.authenticatedRoleId)) {
+    const linkedMember = record && String(record.discord_user_id) !== String(target.id)
+      ? await interaction.guild.members.fetch(String(record.discord_user_id)).catch(() => null)
+      : target;
+    const removed = linkedMember ? await roleSync.removeManaged(linkedMember, guildConfig) : [];
+    if (linkedMember && guildConfig.authenticatedRoleId && linkedMember.roles.cache.has(guildConfig.authenticatedRoleId)) {
       const authenticatedRole = await interaction.guild.roles.fetch(guildConfig.authenticatedRoleId);
       if (authenticatedRole?.editable) {
-        await target.roles.remove(authenticatedRole, 'Roblox authentication unlinked');
+        await linkedMember.roles.remove(authenticatedRole, 'Roblox authentication unlinked');
         removed.push(`${authenticatedRole}`);
       }
     }
-    if (guildConfig.unauthenticatedRoleId && !target.roles.cache.has(guildConfig.unauthenticatedRoleId)) {
+    if (guildConfig.unauthenticatedRoleId) {
       const unauthenticatedRole = await interaction.guild.roles.fetch(guildConfig.unauthenticatedRoleId);
       if (!unauthenticatedRole?.editable) throw new Error('The configured Unauthenticated role is not manageable by the bot');
-      await target.roles.add(unauthenticatedRole, 'Roblox authentication unlinked');
+      for (const memberToReset of new Map([[target.id, target], ...(linkedMember ? [[linkedMember.id, linkedMember]] : [])]).values()) {
+        if (!memberToReset.roles.cache.has(unauthenticatedRole.id)) {
+          await memberToReset.roles.add(unauthenticatedRole, 'Roblox authentication unlinked');
+        }
+      }
     }
-    await database.unlink(target.id);
-    if (database.configured) await database.clearManualRoles(interaction.guildId, target.id);
-    const embed = { color: 0x2E8540, title: '✅ Authentication Unlinked', fields: [
+    if (record) await database.unlink(String(record.discord_user_id));
+    if (database.configured) await database.clearManualRoles(interaction.guildId, record ? String(record.discord_user_id) : target.id);
+    const embed = { color: 0x2E8540, title: '✅ Authentication Reset', fields: [
       { name: 'Member', value: `${target}`, inline: true },
-      { name: 'Roblox ID', value: String(record.roblox_user_id), inline: true },
+      { name: 'Roblox ID', value: record ? String(record.roblox_user_id) : 'No database link was present', inline: true },
       { name: 'Removed Roles', value: removed.length ? removed.join(', ') : 'None' },
       { name: 'Unlinked By', value: `${caller}`, inline: true },
+      ...(!record ? [{ name: 'Result', value: 'Discord authentication roles were reset. Add `roblox-username` if Roblox still reports that account as linked.' }] : []),
     ] };
     await recordAudit(interaction, {
       targetId: target.id, targetUsername: target.user.tag,
