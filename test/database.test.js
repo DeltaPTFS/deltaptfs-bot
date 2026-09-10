@@ -27,6 +27,8 @@ test('PostgreSQL initialization creates authentication, session, and audit table
   assert.match(schema, /rp_name TEXT/);
   assert.match(schema, /last_roblox_role_id BIGINT/);
   assert.match(schema, /last_roblox_role_name TEXT/);
+  await database.getByRobloxUsername('DeltaPilot');
+  assert.match(calls.at(-1)[0], /LOWER\(roblox_username\) = LOWER\(\$1\)/);
 });
 
 test('database methods fail safely when DATABASE_URL is absent', async () => {

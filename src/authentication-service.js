@@ -177,7 +177,10 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
       if (String(profile.sub) !== String(session.expected_roblox_user_id)) {
         throw new Error('The authorized Roblox account did not match the requested username');
       }
-      const currentUser = await roblox.getUsernameFromUserId(profile.sub);
+      const profileUsername = profile.preferred_username || profile.name;
+      const currentUser = profileUsername
+        ? { id: profile.sub, name: profileUsername }
+        : await roblox.getUsernameFromUserId(profile.sub);
       await database.saveAuthentication({ discordUserId: session.discord_user_id, robloxUserId: profile.sub, robloxUsername: currentUser.name, rpName: session.rp_name });
       savedDiscordId = session.discord_user_id;
       const guild = await client.guilds.fetch(session.guild_id);

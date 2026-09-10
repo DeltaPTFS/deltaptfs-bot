@@ -9,6 +9,24 @@ function retryDelayMs(response, attempt) {
 }
 
 function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
+  const cache = new Map();
+  const pending = new Map();
+
+  async function cached(key, ttlMs, producer) {
+    const existing = cache.get(key);
+    if (existing && existing.expiresAt > Date.now()) return existing.value;
+    if (pending.has(key)) return pending.get(key);
+    const promise = producer()
+      .then((value) => {
+        cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+        if (cache.size > 1000) cache.delete(cache.keys().next().value);
+        return value;
+      })
+      .finally(() => pending.delete(key));
+    pending.set(key, promise);
+    return promise;
+  }
+
   async function request(url, options = {}, attempt = 0) {
     let response;
     try {
@@ -28,20 +46,23 @@ function createRobloxService({ fetchImpl = global.fetch, groupId } = {}) {
   async function getUserByUsername(username) {
     const cleaned = username.trim();
     if (!/^[A-Za-z0-9_]{3,20}$/.test(cleaned)) throw new Error('Enter a valid Roblox username');
-    const data = await request('https://users.roblox.com/v1/usernames/users', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usernames: [cleaned], excludeBannedUsers: true }),
-    });
+    const data = await cached(`username:${cleaned.toLowerCase()}`, 5 * 60_000, () =>
+      request('https://users.roblox.com/v1/usernames/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernames: [cleaned], excludeBannedUsers: true }),
+      }));
     if (!data.data?.[0]) throw new Error(`Roblox user “${cleaned}” was not found`);
     return data.data[0];
   }
   async function getUsernameFromUserId(userId) {
-    const user = await request(`https://users.roblox.com/v1/users/${userId}`);
+    const user = await cached(`user:${userId}`, 5 * 60_000, () =>
+      request(`https://users.roblox.com/v1/users/${userId}`));
     if (!user?.name) throw new Error('Roblox account was deleted or unavailable');
     return user;
   }
   async function getUserGroups(userId) {
-    const data = await request(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
+    const data = await cached(`groups:${userId}`, 15_000, () =>
+      request(`https://groups.roblox.com/v2/users/${userId}/groups/roles`));
     return data.data ?? [];
   }
   async function getGroupMembership(userId, configuredGroupId = groupId) {

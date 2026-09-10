@@ -34,3 +34,20 @@ test('retries Roblox rate limits and succeeds without losing authentication prog
   assert.equal((await service.getUsernameFromUserId(123)).name, 'DeltaPilot');
   assert.equal(attempts, 3);
 });
+
+test('caches and coalesces duplicate Roblox lookups to reduce rate limits', async () => {
+  let calls = 0;
+  const service = createRobloxService({ fetchImpl: async () => {
+    calls += 1;
+    return { ok: true, status: 200, json: async () => ({ data: [{ id: 123, name: 'DeltaPilot' }] }) };
+  } });
+  const [first, second] = await Promise.all([
+    service.getUserByUsername('DeltaPilot'),
+    service.getUserByUsername('deltapilot'),
+  ]);
+  assert.equal(first.id, 123);
+  assert.equal(second.id, 123);
+  assert.equal(calls, 1);
+  assert.equal((await service.getUserByUsername('DeltaPilot')).id, 123);
+  assert.equal(calls, 1);
+});

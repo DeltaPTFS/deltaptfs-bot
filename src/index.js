@@ -1132,8 +1132,8 @@ async function handleUnlink(interaction) {
       interaction.guild.members.fetch(interaction.user.id),
       interaction.guild.members.fetch(interaction.options.getUser('user', true).id),
     ]);
-    if (!caller.roles.cache.has(config.moderationLeadershipRoleId)) {
-      await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Access Denied', description: `You must hold <@&${config.moderationLeadershipRoleId}> to use \`/unlink\`.` }] });
+    if (!moderationAccess(caller)) {
+      await interaction.editReply({ embeds: [{ color: 0xC8102E, title: '❌ Access Denied', description: `You must be <@&${config.moderationLeadershipRoleId}> or higher to use \`/unlink\`.` }] });
       return;
     }
     let record = await database.getByDiscordId(target.id);
@@ -1141,8 +1141,11 @@ async function handleUnlink(interaction) {
     const nicknameUsername = target.displayName?.match(/\(@([A-Za-z0-9_]{3,20})\)$/)?.[1];
     const repairUsername = suppliedUsername || nicknameUsername;
     if (!record && repairUsername) {
-      const robloxUser = await roblox.getUserByUsername(repairUsername);
-      record = await database.getByRobloxId(robloxUser.id);
+      record = await database.getByRobloxUsername(repairUsername);
+      if (!record) {
+        const robloxUser = await roblox.getUserByUsername(repairUsername);
+        record = await database.getByRobloxId(robloxUser.id);
+      }
     }
     const guildConfig = await effectiveGuildConfig(interaction.guildId);
     const linkedMember = record && String(record.discord_user_id) !== String(target.id)

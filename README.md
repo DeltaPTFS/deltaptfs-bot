@@ -279,7 +279,7 @@ Successful authentication permanently grants `<@&1539005066512572568>` as the co
 
 After authentication succeeds, the bot sends the member a normal-message welcome DM using the configured Heart and Wing Pin custom emojis, the Delta postal address, server exploration guidance, and SkyTeam closing provided by Leadership. If the member has DMs disabled, authentication still completes successfully.
 
-Roblox API and OAuth requests automatically honor `Retry-After` and retry temporary HTTP 429 and server failures with bounded backoff. If Roblox remains rate limited after five attempts, the member receives a clear wait-and-retry message rather than a misleading account-link result.
+Roblox API and OAuth requests automatically honor `Retry-After` and retry temporary HTTP 429 and server failures with bounded backoff. Username results are cached for five minutes, group results for 15 seconds, and simultaneous identical lookups share one request instead of repeatedly calling Roblox. The OAuth callback uses the authenticated Roblox profile's username directly rather than making a redundant user lookup. If Roblox remains rate limited after five attempts, the member receives a clear wait-and-retry message rather than a misleading account-link result.
 
 ### `/newsletter message:...`
 
