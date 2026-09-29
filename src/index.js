@@ -39,9 +39,14 @@ const { newsletterContent } = require('./member-messages');
 const {
   containsDiscordInvite,
   createMessageSnapshotCache,
+  decorateLogEmbed,
+  DELTA_COLORS,
   isTicketChannel,
   memberAtOrAboveRole,
   messageDescription,
+  nextWeeklyReportDelay,
+  summarizeLogMessages,
+  UPDATE_FOOTER,
 } = require('./server-logging');
 
 const token = process.env.DISCORD_TOKEN?.trim();
@@ -599,12 +604,24 @@ client.on(Events.GuildMemberAdd, async (member) => {
     || member.guild.roles.cache.find((role) =>
       ['unauthenticated | delta air lines', 'unauthenticated | delta airlines', 'unauthenticated']
         .includes(role.name.toLowerCase()));
-  if (!unauthenticated?.editable) return;
-  try {
+  if (unauthenticated?.editable) try {
     await member.roles.add(unauthenticated, 'New Delta Airlines member awaiting authentication');
   } catch (error) {
     console.error('Could not assign the Unauthenticated role:', error);
   }
+  const created = Math.floor(member.user.createdTimestamp / 1000);
+  await sendServerLog(member.guild, {
+    color: DELTA_COLORS.blue,
+    title: '🛬 Member Joined',
+    description: `${member.user} has arrived in the Delta community.`,
+    fields: [
+      { name: 'Member', value: `${member.user} (${member.user.tag})` },
+      { name: 'Account Created', value: `<t:${created}:F> • <t:${created}:R>`, inline: true },
+      { name: 'Member Count', value: member.guild.memberCount.toLocaleString(), inline: true },
+      { name: 'Authentication', value: unauthenticated?.editable ? 'Unauthenticated role assigned' : '⚠️ Role unavailable or above the bot' },
+      { name: 'User ID', value: `\`${member.id}\`` },
+    ],
+  });
 });
 
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
@@ -672,6 +689,10 @@ client.once(Events.ClientReady, async (readyClient) => {
   } catch (error) {
     console.error('Discord command registration failed:', error);
   }
+  for (const guild of readyClient.guilds.cache.values()) {
+    await postReplaceableUpdate(guild).catch((error) => console.error(`Could not post update for ${guild.id}:`, error));
+  }
+  scheduleWeeklyReports();
 });
 
 client.on(Events.Error, (error) => {
@@ -785,7 +806,7 @@ async function recordAudit(interaction, entry, embed) {
       const pingLeadership = ['KICK', 'BAN'].includes(entry.action);
       if (channel?.isTextBased()) await channel.send({
         content: pingLeadership ? `<@&${config.moderationLeadershipRoleId}>` : undefined,
-        embeds: [embed],
+        embeds: [decorateLogEmbed(embed, interaction.guild)],
         allowedMentions: { roles: pingLeadership ? [config.moderationLeadershipRoleId] : [] },
       });
     } catch (error) { console.error('Could not send staff log embed:', error); }
@@ -799,12 +820,93 @@ async function sendServerLog(guild, embed, pingLeadership = false) {
     if (!channel?.isTextBased()) return;
     await channel.send({
       content: pingLeadership ? `<@&${config.moderationLeadershipRoleId}>` : undefined,
-      embeds: [embed],
+      embeds: [decorateLogEmbed(embed, guild)],
       allowedMentions: { roles: pingLeadership ? [config.moderationLeadershipRoleId] : [] },
     });
   } catch (error) {
     console.error('Could not send server log:', error);
   }
+}
+
+async function configuredLogChannel(guild) {
+  const guildConfig = await effectiveGuildConfig(guild.id).catch(() => config);
+  const channelId = guildConfig.logChannelId || config.logChannelId;
+  return channelId ? guild.channels.fetch(channelId).catch(() => null) : null;
+}
+
+async function postReplaceableUpdate(guild) {
+  const channel = await configuredLogChannel(guild);
+  if (!channel?.isTextBased()) return;
+  let before;
+  while (true) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    const previous = batch.filter((message) => message.author.id === client.user.id
+      && message.embeds.some((embed) => embed.footer?.text === UPDATE_FOOTER));
+    await Promise.all(previous.map((message) => message.delete().catch(() => null)));
+    if (batch.size < 100) break;
+    before = batch.last().id;
+  }
+  await channel.send({ embeds: [{
+    color: DELTA_COLORS.blue,
+    title: '🔺 Delta Virtual Assistant Updated',
+    description: `The moderation and operations systems are online and running **version ${botVersion}**. This notice replaces the previous deployment update.`,
+    fields: [
+      { name: 'Enhanced Coverage', value: 'Member arrivals/departures, edits, deletions, and Discord AutoMod actions' },
+      { name: 'Weekly Report', value: 'Every Sunday at **12:00 AM America/New_York** (EST/EDT aware)' },
+    ],
+    footer: { text: UPDATE_FOOTER },
+    timestamp: new Date().toISOString(),
+  }] });
+}
+
+async function fetchWeeklyLogs(channel, since) {
+  const found = [];
+  let before;
+  while (true) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (!batch.size) break;
+    for (const message of batch.values()) {
+      if (message.createdTimestamp >= since && message.author.id === client.user.id
+        && !message.embeds.some((embed) => embed.footer?.text === UPDATE_FOOTER)) found.push(message);
+    }
+    const oldest = batch.last();
+    if (!oldest || oldest.createdTimestamp < since || batch.size < 100) break;
+    before = oldest.id;
+  }
+  return found;
+}
+
+async function postWeeklyReport(guild, now = new Date()) {
+  const channel = await configuredLogChannel(guild);
+  if (!channel?.isTextBased()) return;
+  const since = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+  const { records, totals } = summarizeLogMessages(await fetchWeeklyLogs(channel, since));
+  const breakdown = [...totals].sort((a, b) => b[1] - a[1])
+    .map(([title, count]) => `**${count}×** ${title}`).join('\n') || 'No moderation events were recorded.';
+  const transcript = records.map(({ timestamp, title, url }) =>
+    `${timestamp.toISOString()} | ${title} | ${url}`).join('\n') || 'No moderation events were recorded this week.';
+  await channel.send({
+    embeds: [decorateLogEmbed({
+      color: DELTA_COLORS.blue,
+      title: '📊 Delta Weekly Moderation Report',
+      description: `A complete review of the **${records.length}** log entries recorded during the last seven days.`,
+      fields: [{ name: 'Event Breakdown', value: breakdown.slice(0, 1024) },
+        { name: 'Reporting Window', value: `<t:${Math.floor(since / 1000)}:F> — <t:${Math.floor(now.getTime() / 1000)}:F>` }],
+    }, guild)],
+    files: [{ attachment: Buffer.from(transcript), name: `delta-weekly-logs-${now.toISOString().slice(0, 10)}.txt` }],
+  });
+}
+
+function scheduleWeeklyReports() {
+  const scheduleNext = () => {
+    const timer = setTimeout(async () => {
+      for (const guild of client.guilds.cache.values()) await postWeeklyReport(guild).catch((error) =>
+        console.error(`Could not post weekly report for ${guild.id}:`, error));
+      scheduleNext();
+    }, nextWeeklyReportDelay());
+    timer.unref?.();
+  };
+  scheduleNext();
 }
 
 async function recentAuditActor(guild, type, targetId) {
@@ -1635,6 +1737,7 @@ client.on(Events.MessageBulkDelete, async (messages, channel) => {
 });
 
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+  if (newMessage.partial) await newMessage.fetch().catch(() => null);
   const previous = messageSnapshots.get(newMessage.id);
   const before = oldMessage.content || previous?.content || '';
   messageSnapshots.remember(newMessage);
@@ -1652,6 +1755,25 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     ],
     timestamp: new Date().toISOString(),
   });
+});
+
+client.on(Events.AutoModerationActionExecution, async (execution) => {
+  const member = execution.member || await execution.guild.members.fetch(execution.userId).catch(() => null);
+  const rule = await execution.guild.autoModerationRules.fetch(execution.ruleId).catch(() => null);
+  const actionNames = { 1: 'Message blocked', 2: 'Alert sent', 3: 'Member timed out', 4: 'Interaction blocked' };
+  await sendServerLog(execution.guild, {
+    color: DELTA_COLORS.red,
+    title: '🛡️ AutoMod Violation Detected',
+    description: 'Discord AutoMod intervened to protect the Delta community.',
+    fields: [
+      { name: 'Member', value: member ? `${member} (${member.user.tag})` : `<@${execution.userId}>` },
+      { name: 'Rule', value: rule?.name || `Rule ${execution.ruleId}`, inline: true },
+      { name: 'Action', value: actionNames[execution.action.type] || `Type ${execution.action.type}`, inline: true },
+      { name: 'Channel', value: execution.channel ? `${execution.channel}` : `<#${execution.channelId}>` },
+      { name: 'Matched Content', value: (execution.matchedContent || execution.content || '*Content was withheld by Discord.*').slice(0, 1024) },
+      { name: 'User ID', value: `\`${execution.userId}\`` },
+    ],
+  }, execution.action.type === 3);
 });
 
 client.on(Events.InviteCreate, async (invite) => {
@@ -1703,6 +1825,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
     title: kick ? '👢 Member Kicked' : '📤 Member Left',
     fields: [
       { name: 'Member', value: `${member.user} (${member.user.tag})` },
+      { name: 'Joined Server', value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:F> • <t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Unknown' },
+      { name: 'Member Count', value: member.guild.memberCount.toLocaleString(), inline: true },
+      { name: 'User ID', value: `\`${member.id}\``, inline: true },
       ...(kick ? [
         { name: 'Moderator', value: kick.executor ? `${kick.executor} (${kick.executor.tag})` : 'Unknown' },
         { name: 'Reason', value: kick.reason || 'No reason available' },
