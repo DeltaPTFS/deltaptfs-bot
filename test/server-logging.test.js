@@ -8,6 +8,7 @@ const {
   isTicketChannel,
   memberAtOrAboveRole,
   nextWeeklyReportDelay,
+  resolveDeltaEmoji,
   summarizeLogMessages,
 } = require('../src/server-logging');
 
@@ -53,11 +54,24 @@ test('server logging events and configured channels are wired into the bot', () 
 });
 
 test('decorates Delta logs consistently without replacing event styling', () => {
-  const embed = decorateLogEmbed({ title: '🛬 Member Joined', color: 123 }, { iconURL: () => 'https://example.com/icon.png' });
+  const deltaLogo = { name: 'DeltaLogo', toString: () => '<:DeltaLogo:123456789012345678>' };
+  const guild = {
+    iconURL: () => 'https://example.com/icon.png',
+    emojis: { cache: { find: (predicate) => [deltaLogo].find(predicate) } },
+  };
+  const embed = decorateLogEmbed({ title: '🛬 Member Joined', color: 123 }, guild);
   assert.equal(embed.color, 123);
+  assert.equal(embed.title, '<:DeltaLogo:123456789012345678> Member Joined');
   assert.equal(embed.author.name, 'DELTA • OPERATIONS LOG');
   assert.match(embed.footer.text, /Delta Air Lines/);
   assert.ok(embed.timestamp);
+  assert.equal(resolveDeltaEmoji(guild), '<:DeltaLogo:123456789012345678>');
+});
+
+test('logs never substitute a non-Delta emoji when the server logo is unavailable', () => {
+  const embed = decorateLogEmbed({ title: '🛡️ AutoMod Violation Detected' }, { emojis: { cache: new Map() } });
+  assert.equal(embed.title, 'AutoMod Violation Detected');
+  assert.doesNotMatch(embed.footer.text, /[🛡🔺]/u);
 });
 
 test('calculates Sunday midnight in America/New_York across daylight saving time', () => {

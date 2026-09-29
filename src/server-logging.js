@@ -1,7 +1,8 @@
 const DISCORD_INVITE_PATTERN = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/[A-Za-z0-9-]+/i;
 const DELTA_COLORS = Object.freeze({ navy: 0x071D49, blue: 0x236192, red: 0xC8102E, gray: 0x6B7280 });
-const DELTA_LOG_FOOTER = '🔺 Delta Air Lines • Safety & Moderation';
-const UPDATE_FOOTER = '🔺 Delta System Update • Replaceable';
+const DELTA_LOG_FOOTER = 'Delta Air Lines • Safety & Moderation';
+const UPDATE_FOOTER = 'Delta System Update • Replaceable';
+const NON_DELTA_EMOJI_PATTERN = /[\p{Extended_Pictographic}\u2139\u26A0\u2705\u274C]\uFE0F?/gu;
 
 function containsDiscordInvite(content) {
   return DISCORD_INVITE_PATTERN.test(content || '');
@@ -22,10 +23,26 @@ function messageDescription(message) {
   return content.slice(0, 3500);
 }
 
+function resolveDeltaEmoji(guild, preferredNames = ['DeltaLogo']) {
+  const names = preferredNames.map((name) => name.toLowerCase());
+  const cache = guild?.emojis?.cache;
+  const emoji = cache?.find
+    ? cache.find((candidate) => names.includes(candidate.name?.toLowerCase()))
+    : [...(cache?.values?.() || [])].find((candidate) => names.includes(candidate.name?.toLowerCase()));
+  return emoji?.toString() || '';
+}
+
+function withoutNonDeltaEmojis(value) {
+  return typeof value === 'string' ? value.replace(NON_DELTA_EMOJI_PATTERN, '').replace(/\s{2,}/g, ' ').trim() : value;
+}
+
 function decorateLogEmbed(embed, guild) {
+  const logo = resolveDeltaEmoji(guild);
+  const cleanTitle = withoutNonDeltaEmojis(embed.title);
   return {
     color: DELTA_COLORS.navy,
     ...embed,
+    title: cleanTitle ? `${logo ? `${logo} ` : ''}${cleanTitle}` : undefined,
     author: embed.author || { name: 'DELTA • OPERATIONS LOG', icon_url: guild?.iconURL?.() || undefined },
     footer: embed.footer || { text: DELTA_LOG_FOOTER },
     timestamp: embed.timestamp || new Date().toISOString(),
@@ -98,6 +115,7 @@ module.exports = {
   memberAtOrAboveRole,
   messageDescription,
   nextWeeklyReportDelay,
+  resolveDeltaEmoji,
   summarizeLogMessages,
   UPDATE_FOOTER,
 };

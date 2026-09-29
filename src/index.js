@@ -45,6 +45,7 @@ const {
   memberAtOrAboveRole,
   messageDescription,
   nextWeeklyReportDelay,
+  resolveDeltaEmoji,
   summarizeLogMessages,
   UPDATE_FOOTER,
 } = require('./server-logging');
@@ -612,13 +613,13 @@ client.on(Events.GuildMemberAdd, async (member) => {
   const created = Math.floor(member.user.createdTimestamp / 1000);
   await sendServerLog(member.guild, {
     color: DELTA_COLORS.blue,
-    title: '🛬 Member Joined',
+    title: 'Member Joined',
     description: `${member.user} has arrived in the Delta community.`,
     fields: [
       { name: 'Member', value: `${member.user} (${member.user.tag})` },
       { name: 'Account Created', value: `<t:${created}:F> • <t:${created}:R>`, inline: true },
       { name: 'Member Count', value: member.guild.memberCount.toLocaleString(), inline: true },
-      { name: 'Authentication', value: unauthenticated?.editable ? 'Unauthenticated role assigned' : '⚠️ Role unavailable or above the bot' },
+      { name: 'Authentication', value: unauthenticated?.editable ? 'Unauthenticated role assigned' : 'Role unavailable or above the bot' },
       { name: 'User ID', value: `\`${member.id}\`` },
     ],
   });
@@ -632,7 +633,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const actor = await recentAuditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
     await sendServerLog(newMember.guild, {
       color: 0x236192,
-      title: '🎭 Member Roles Updated',
+      title: 'Member Roles Updated',
       fields: [
         { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
         { name: 'Added', value: addedRoles.length ? addedRoles.map(String).join(', ').slice(0, 1024) : 'None' },
@@ -646,7 +647,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const actor = await recentAuditActor(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
     await sendServerLog(newMember.guild, {
       color: 0xC8102E,
-      title: newMember.communicationDisabledUntilTimestamp ? '⏳ Member Timed Out' : '✅ Member Timeout Removed',
+      title: newMember.communicationDisabledUntilTimestamp ? 'Member Timed Out' : 'Member Timeout Removed',
       fields: [
         { name: 'Member', value: `${newMember} (${newMember.user.tag})` },
         { name: 'Until', value: newMember.communicationDisabledUntilTimestamp
@@ -846,9 +847,10 @@ async function postReplaceableUpdate(guild) {
     if (batch.size < 100) break;
     before = batch.last().id;
   }
+  const deltaLogo = resolveDeltaEmoji(guild);
   await channel.send({ embeds: [{
     color: DELTA_COLORS.blue,
-    title: '🔺 Delta Virtual Assistant Updated',
+    title: `${deltaLogo ? `${deltaLogo} ` : ''}Delta Virtual Assistant Updated`,
     description: `The moderation and operations systems are online and running **version ${botVersion}**. This notice replaces the previous deployment update.`,
     fields: [
       { name: 'Enhanced Coverage', value: 'Member arrivals/departures, edits, deletions, and Discord AutoMod actions' },
@@ -888,7 +890,7 @@ async function postWeeklyReport(guild, now = new Date()) {
   await channel.send({
     embeds: [decorateLogEmbed({
       color: DELTA_COLORS.blue,
-      title: '📊 Delta Weekly Moderation Report',
+      title: 'Delta Weekly Moderation Report',
       description: `A complete review of the **${records.length}** log entries recorded during the last seven days.`,
       fields: [{ name: 'Event Breakdown', value: breakdown.slice(0, 1024) },
         { name: 'Reporting Window', value: `<t:${Math.floor(since / 1000)}:F> — <t:${Math.floor(now.getTime() / 1000)}:F>` }],
@@ -1641,7 +1643,7 @@ async function handleNewsletter(interaction) {
     }
     const summary = {
       color: 0x071D49,
-      title: '📰 Newsletter Delivery Complete',
+      title: 'Newsletter Delivery Complete',
       fields: [
         { name: 'Delivered', value: String(delivered), inline: true },
         { name: 'Failed/DMs Closed', value: String(failed), inline: true },
@@ -1677,7 +1679,7 @@ client.on(Events.MessageCreate, async (message) => {
     setTimeout(() => intentionallyDeletedMessages.delete(message.id), 10_000).unref?.();
     await sendServerLog(message.guild, {
       color: 0xC8102E,
-      title: '🔗 Unauthorized Invite Removed',
+      title: 'Unauthorized Invite Removed',
       fields: [
         { name: 'Member', value: `${message.author} (${message.author.tag})` },
         { name: 'Channel', value: `${message.channel}` },
@@ -1701,7 +1703,7 @@ client.on(Events.MessageDelete, async (message) => {
     : null;
   await sendServerLog(message.guild, {
     color: 0xC8102E,
-    title: '🗑️ Message Deleted',
+    title: 'Message Deleted',
     fields: [
       { name: 'Author', value: message.author
         ? `${message.author} (${message.author.tag})`
@@ -1726,7 +1728,7 @@ client.on(Events.MessageBulkDelete, async (messages, channel) => {
   const actor = await recentAuditActor(guild, AuditLogEvent.MessageBulkDelete, channel.id);
   await sendServerLog(guild, {
     color: 0xC8102E,
-    title: '🗑️ Messages Bulk Deleted',
+    title: 'Messages Bulk Deleted',
     fields: [
       { name: 'Channel', value: `${channel}` },
       { name: 'Messages', value: String(count) },
@@ -1744,7 +1746,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (!newMessage.guild || newMessage.author?.bot || before === newMessage.content) return;
   await sendServerLog(newMessage.guild, {
     color: 0x236192,
-    title: '✏️ Message Edited',
+    title: 'Message Edited',
     fields: [
       { name: 'Author', value: newMessage.author ? `${newMessage.author} (${newMessage.author.tag})` : 'Unknown or uncached' },
       { name: 'Channel', value: `${newMessage.channel}` },
@@ -1763,7 +1765,7 @@ client.on(Events.AutoModerationActionExecution, async (execution) => {
   const actionNames = { 1: 'Message blocked', 2: 'Alert sent', 3: 'Member timed out', 4: 'Interaction blocked' };
   await sendServerLog(execution.guild, {
     color: DELTA_COLORS.red,
-    title: '🛡️ AutoMod Violation Detected',
+    title: 'AutoMod Violation Detected',
     description: 'Discord AutoMod intervened to protect the Delta community.',
     fields: [
       { name: 'Member', value: member ? `${member} (${member.user.tag})` : `<@${execution.userId}>` },
@@ -1785,7 +1787,7 @@ client.on(Events.InviteCreate, async (invite) => {
   }
   await sendServerLog(invite.guild, {
     color: 0xC8102E,
-    title: '🔗 Unauthorized Server Invite Revoked',
+    title: 'Unauthorized Server Invite Revoked',
     fields: [
       { name: 'Created By', value: `${invite.inviter} (${invite.inviter.tag})` },
       { name: 'Channel', value: invite.channel ? `${invite.channel}` : 'Unknown' },
@@ -1801,7 +1803,7 @@ client.on(Events.GuildBanAdd, async (ban) => {
   const actor = await recentAuditActor(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
   await sendServerLog(ban.guild, {
     color: 0xC8102E,
-    title: '🔨 Member Banned',
+    title: 'Member Banned',
     fields: [
       { name: 'Member', value: `${ban.user} (${ban.user.tag})` },
       { name: 'Reason', value: ban.reason || 'No reason available' },
@@ -1822,7 +1824,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
   }
   await sendServerLog(member.guild, {
     color: kick ? 0xC8102E : 0x6B7280,
-    title: kick ? '👢 Member Kicked' : '📤 Member Left',
+    title: kick ? 'Member Kicked' : 'Member Left',
     fields: [
       { name: 'Member', value: `${member.user} (${member.user.tag})` },
       { name: 'Joined Server', value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:F> • <t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Unknown' },
