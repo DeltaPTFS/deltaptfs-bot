@@ -1,7 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { containsDiscordInvite, createMessageSnapshotCache, isTicketChannel, memberAtOrAboveRole } = require('../src/server-logging');
+const {
+  containsDiscordInvite,
+  createMessageSnapshotCache,
+  decorateLogEmbed,
+  isTicketChannel,
+  memberAtOrAboveRole,
+  nextWeeklyReportDelay,
+  resolveDeltaEmoji,
+  summarizeLogMessages,
+} = require('../src/server-logging');
 
 test('detects Discord invite links while exempting ticket channels', () => {
   assert.equal(containsDiscordInvite('join https://discord.gg/example'), true);
@@ -32,7 +41,7 @@ test('retains recently observed message content for deletion logs', () => {
 
 test('server logging events and configured channels are wired into the bot', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
-  for (const event of ['MessageCreate', 'MessageDelete', 'MessageUpdate', 'InviteCreate', 'GuildBanAdd', 'GuildMemberRemove']) {
+  for (const event of ['MessageCreate', 'MessageDelete', 'MessageUpdate', 'InviteCreate', 'GuildBanAdd', 'GuildMemberAdd', 'GuildMemberRemove', 'AutoModerationActionExecution']) {
     assert.match(source, new RegExp(`Events\\.${event}`));
   }
   assert.match(source, /moderationAccess\(caller\)/);
@@ -42,4 +51,40 @@ test('server logging events and configured channels are wired into the bot', () 
   assert.match(source, /AuditLogEvent\.MessageDelete/);
   assert.match(source, /AuditLogEvent\.MemberRoleUpdate/);
   assert.match(source, /name: 'Executed By'/);
+});
+
+test('decorates Delta logs consistently without replacing event styling', () => {
+  const deltaLogo = { name: 'DeltaLogo', toString: () => '<:DeltaLogo:123456789012345678>' };
+  const guild = {
+    iconURL: () => 'https://example.com/icon.png',
+    emojis: { cache: { find: (predicate) => [deltaLogo].find(predicate) } },
+  };
+  const embed = decorateLogEmbed({ title: '🛬 Member Joined', color: 123 }, guild);
+  assert.equal(embed.color, 123);
+  assert.equal(embed.title, '<:DeltaLogo:123456789012345678> Member Joined');
+  assert.equal(embed.author.name, 'DELTA • OPERATIONS LOG');
+  assert.match(embed.footer.text, /Delta Air Lines/);
+  assert.ok(embed.timestamp);
+  assert.equal(resolveDeltaEmoji(guild), '<:DeltaLogo:123456789012345678>');
+});
+
+test('logs never substitute a non-Delta emoji when the server logo is unavailable', () => {
+  const embed = decorateLogEmbed({ title: '🛡️ AutoMod Violation Detected' }, { emojis: { cache: new Map() } });
+  assert.equal(embed.title, 'AutoMod Violation Detected');
+  assert.doesNotMatch(embed.footer.text, /[🛡🔺]/u);
+});
+
+test('calculates Sunday midnight in America/New_York across daylight saving time', () => {
+  const winterNow = new Date('2026-01-10T23:00:00.000Z');
+  assert.equal(nextWeeklyReportDelay(winterNow), 6 * 60 * 60 * 1000);
+  const summerNow = new Date('2026-07-04T23:00:00.000Z');
+  assert.equal(nextWeeklyReportDelay(summerNow), 5 * 60 * 60 * 1000);
+});
+
+test('weekly reports sort and count every embed log entry', () => {
+  const first = { createdAt: new Date('2026-01-01T02:00:00Z'), url: 'two', embeds: [{ title: 'Edited' }] };
+  const second = { createdAt: new Date('2026-01-01T01:00:00Z'), url: 'one', embeds: [{ title: 'Deleted' }, { title: 'Edited' }] };
+  const summary = summarizeLogMessages([first, second]);
+  assert.deepEqual(summary.records.map(({ title }) => title), ['Deleted', 'Edited', 'Edited']);
+  assert.equal(summary.totals.get('Edited'), 2);
 });
