@@ -48,6 +48,7 @@ const {
   resolveDeltaEmoji,
   summarizeLogMessages,
   UPDATE_FOOTER,
+  withoutNonDeltaEmojis,
 } = require('./server-logging');
 
 const token = process.env.DISCORD_TOKEN?.trim();
@@ -134,6 +135,13 @@ const infoCommand = new SlashCommandBuilder()
   .setName('info')
   .setDescription('Post the complete Delta welcome and information sequence')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
+
+const logsUpdateCommand = new SlashCommandBuilder()
+  .setName('logs-update')
+  .setDescription('Replace the current update notice in the operations log')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addStringOption((option) => option.setName('message').setDescription('The new update details').setRequired(true).setMaxLength(4000))
+  .addStringOption((option) => option.setName('title').setDescription('Optional update heading').setMaxLength(200));
 
 for (const message of INFO_MESSAGES) {
   infoCommand.addAttachmentOption((option) => option
@@ -681,6 +689,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   try {
     await readyClient.application.commands.set([
       setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
+      logsUpdateCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
@@ -691,7 +700,8 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.error('Discord command registration failed:', error);
   }
   for (const guild of readyClient.guilds.cache.values()) {
-    await postReplaceableUpdate(guild).catch((error) => console.error(`Could not post update for ${guild.id}:`, error));
+    await postReplaceableUpdate(guild, { createOnly: true })
+      .catch((error) => console.error(`Could not post update for ${guild.id}:`, error));
   }
   scheduleWeeklyReports();
 });
@@ -835,30 +845,69 @@ async function configuredLogChannel(guild) {
   return channelId ? guild.channels.fetch(channelId).catch(() => null) : null;
 }
 
-async function postReplaceableUpdate(guild) {
+async function postReplaceableUpdate(guild, options = {}) {
   const channel = await configuredLogChannel(guild);
-  if (!channel?.isTextBased()) return;
+  if (!channel?.isTextBased()) return { changed: false, reason: 'missing-channel' };
+  const previous = [];
   let before;
   while (true) {
     const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
-    const previous = batch.filter((message) => message.author.id === client.user.id
-      && message.embeds.some((embed) => embed.footer?.text === UPDATE_FOOTER));
-    await Promise.all(previous.map((message) => message.delete().catch(() => null)));
+    previous.push(...batch.filter((message) => message.author.id === client.user.id
+      && message.embeds.some((embed) => withoutNonDeltaEmojis(embed.footer?.text) === UPDATE_FOOTER)).values());
     if (batch.size < 100) break;
     before = batch.last().id;
   }
+  if (options.createOnly && previous.length) {
+    await Promise.all(previous.slice(1).map((message) => message.delete().catch(() => null)));
+    return { changed: false, reason: 'existing-update', message: previous[0] };
+  }
+  const title = withoutNonDeltaEmojis(options.title || 'Delta Virtual Assistant Updated');
+  const description = withoutNonDeltaEmojis(options.description
+    || `The moderation and operations systems are online and running **version ${botVersion}**.`)
+    || 'Delta operations update.';
+  const matching = previous.find((message) => message.embeds.some((embed) =>
+    embed.description === description && withoutNonDeltaEmojis(embed.title).endsWith(title)));
+  if (matching) {
+    await Promise.all(previous.filter(({ id }) => id !== matching.id)
+      .map((message) => message.delete().catch(() => null)));
+    return { changed: false, reason: 'same-update', message: matching };
+  }
+  await Promise.all(previous.map((message) => message.delete().catch(() => null)));
   const deltaLogo = resolveDeltaEmoji(guild);
-  await channel.send({ embeds: [{
+  const message = await channel.send({ embeds: [{
     color: DELTA_COLORS.blue,
-    title: `${deltaLogo ? `${deltaLogo} ` : ''}Delta Virtual Assistant Updated`,
-    description: `The moderation and operations systems are online and running **version ${botVersion}**. This notice replaces the previous deployment update.`,
-    fields: [
+    title: `${deltaLogo ? `${deltaLogo} ` : ''}${title}`,
+    description,
+    fields: options.fields || [
       { name: 'Enhanced Coverage', value: 'Member arrivals/departures, edits, deletions, and Discord AutoMod actions' },
       { name: 'Weekly Report', value: 'Every Sunday at **12:00 AM America/New_York** (EST/EDT aware)' },
     ],
     footer: { text: UPDATE_FOOTER },
     timestamp: new Date().toISOString(),
   }] });
+  return { changed: true, reason: 'updated', message };
+}
+
+async function handleLogsUpdate(interaction) {
+  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need Manage Server to replace the logs update.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const result = await postReplaceableUpdate(interaction.guild, {
+      title: interaction.options.getString('title') || 'Delta Operations Update',
+      description: interaction.options.getString('message', true),
+      fields: [{ name: 'Published By', value: `${interaction.user} (${interaction.user.tag})` }],
+    });
+    await interaction.editReply(result.reason === 'same-update'
+      ? 'That update is already the current logs-channel notice, so it was not posted twice.'
+      : result.changed ? 'The previous logs-channel update was removed and the new update was posted.'
+        : 'The configured logs channel could not be found.');
+  } catch (error) {
+    console.error('Could not replace logs update:', error);
+    await interaction.editReply(`Could not replace the logs update: ${String(error.message || error).slice(0, 500)}`);
+  }
 }
 
 async function fetchWeeklyLogs(channel, since) {
@@ -869,7 +918,7 @@ async function fetchWeeklyLogs(channel, since) {
     if (!batch.size) break;
     for (const message of batch.values()) {
       if (message.createdTimestamp >= since && message.author.id === client.user.id
-        && !message.embeds.some((embed) => embed.footer?.text === UPDATE_FOOTER)) found.push(message);
+        && !message.embeds.some((embed) => withoutNonDeltaEmojis(embed.footer?.text) === UPDATE_FOOTER)) found.push(message);
     }
     const oldest = batch.last();
     if (!oldest || oldest.createdTimestamp < since || batch.size < 100) break;
@@ -1874,6 +1923,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'info') {
     await handleInfo(interaction);
+    return;
+  }
+  if (interaction.commandName === 'logs-update') {
+    await handleLogsUpdate(interaction);
     return;
   }
   if (interaction.commandName === 'authenticate') {

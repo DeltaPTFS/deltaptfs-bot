@@ -118,4 +118,5 @@ module.exports = {
   resolveDeltaEmoji,
   summarizeLogMessages,
   UPDATE_FOOTER,
+  withoutNonDeltaEmojis,
 };
