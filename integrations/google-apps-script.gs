@@ -69,7 +69,7 @@ function flightEvent(event) {
   const site=PropertiesService.getScriptProperties().getProperty('WEBSITE_URL') || '';
   upsert('Hosted Flights', [0], [
     p.flight_id, p.flight_number, p.departure, p.destination, p.aircraft, p.gate,
-    p.starts_at, p.ends_at, '', p.status,
+    p.starts_at, p.ends_at, p.host_discord_id || '', p.status,
     site ? site.replace(/\/$/, '') + '/forms/flight-crew-fillout?flight=' + p.flight_id : '',
     new Date().toISOString()
   ]);
