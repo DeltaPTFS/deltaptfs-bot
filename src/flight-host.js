@@ -14,7 +14,8 @@ const flightHostCommand = new SlashCommandBuilder()
   .addStringOption(o => o.setName('remarks').setDescription('Flight announcement details').setMaxLength(800));
 
 async function handleFlightHost(interaction) {
-  if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageEvents)) {
+  const approved = [process.env.GUILD_ID, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
+  if (!interaction.inGuild() || !approved.includes(interaction.guildId) || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageEvents)) {
     return interaction.reply({ content: 'Manage Events permission is required to host a flight.', ephemeral: true });
   }
   const number = interaction.options.getString('number', true).trim().toUpperCase();
