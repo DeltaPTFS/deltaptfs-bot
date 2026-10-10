@@ -126,6 +126,42 @@ function upsertDiscordMember(p) {
   ]);
   return { ok: true };
 }
+
+/** Import a batch without a full-sheet round-trip for each person. */
+function upsertDiscordRoster(members) {
+  if (!Array.isArray(members) || members.length > 80) throw Error('Maximum 80 roster entries per request');
+  const memberSheet = getSheet('Members'), roleSheet = getSheet('Discord Roles');
+  const existingMembers = rows(memberSheet), existingRoles = rows(roleSheet);
+  const memberCols = SCHEMAS['Members'].length, roleCols = SCHEMAS['Discord Roles'].length;
+  const memberIndex = new Map(existingMembers.map((r,i)=>[String(r[0]),i]));
+  const roleIndex = new Map(existingRoles.map((r,i)=>[String(r[0])+':'+String(r[2]),i]));
+  for (const member of members) {
+    if (!/^\d{15,22}$/.test(String(member.userId||'')) || !/^\d{15,22}$/.test(String(member.guildId||'')))
+      throw Error('Invalid Discord identity');
+    const memberId=String(member.userId), key=memberId+':'+String(member.guildId);
+    let mIdx=memberIndex.get(memberId);
+    if (mIdx===undefined) {
+      mIdx=existingMembers.length;
+      existingMembers.push(Array(memberCols).fill(''));
+      memberIndex.set(memberId,mIdx);
+    }
+    const m=existingMembers[mIdx];
+    m[0]=memberId; m[1]=member.discordUsername||''; m[2]=member.displayName||'';
+    m[11]=new Date().toISOString(); if (!m[12])m[12]='Discord';
+    const roleRow=[memberId,member.displayName||'',String(member.guildId),
+      member.guildName||'',member.roleIds||[],member.roleNames||[],new Date().toISOString()];
+    let rIdx=roleIndex.get(key);
+    if (rIdx===undefined) {
+      rIdx=existingRoles.length; existingRoles.push(roleRow); roleIndex.set(key,rIdx);
+    } else existingRoles[rIdx]=roleRow;
+  }
+  if (existingMembers.length) memberSheet.getRange(2,1,existingMembers.length,memberCols)
+    .setValues(existingMembers.map(row=>row.map(clean)));
+  if (existingRoles.length) roleSheet.getRange(2,1,existingRoles.length,roleCols)
+    .setValues(existingRoles.map(row=>row.map(clean)));
+  return {ok:true,count:members.length};
+}
+
 function ledgerTotals() {
   return rows(getSheet('SkyMiles Ledger')).reduce((result,row)=>{
     const id=String(row[1]); if(!id)return result;
@@ -146,6 +182,7 @@ function doPost(e) {
     let result;
     if(body.action==='syncEvent')result=syncEvent(body.event);
     else if(body.action==='upsertDiscordMember')result=upsertDiscordMember(body);
+    else if(body.action==='upsertDiscordRoster')result=upsertDiscordRoster(body.members);
     else if(body.action==='balance')result={ok:true,...(ledgerTotals()[String(body.userId)]||{userId:String(body.userId),balance:0})};
     else if(body.action==='leaderboard')result={ok:true,leaders:Object.values(ledgerTotals()).sort((a,b)=>b.balance-a.balance).slice(0,25)};
     else throw Error('Unknown or unsupported action');
