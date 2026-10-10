@@ -22,6 +22,7 @@ const {
 const { createWebsiteSyncHandler } = require('./website-sync');
 const { websiteConfigured, skyMiles } = require('./website-client');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
+const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { loadConfig, mergeGuildConfig } = require('./config');
@@ -700,7 +701,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
-      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(),
+      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -711,6 +712,11 @@ client.once(Events.ClientReady, async (readyClient) => {
       .catch((error) => console.error(`Could not post update for ${guild.id}:`, error));
   }
   scheduleWeeklyReports();
+  const syncedGuilds = [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
+  if (isSheetsConfigured() && syncedGuilds.length) {
+    syncAllGuilds(readyClient, syncedGuilds).catch(console.error);
+    setInterval(() => syncAllGuilds(readyClient, syncedGuilds).catch(console.error), 6 * 60 * 60 * 1000).unref();
+  }
 });
 
 client.on(Events.Error, (error) => {
@@ -1915,6 +1921,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       content: `Delta Virtual Assistant **v${botVersion}** — Delta Airlines layout enabled.`,
       ephemeral: true,
     });
+    return;
+  }
+
+  if (interaction.commandName === 'sync-roster') {
+    await handleRosterSync(interaction, client, [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean));
     return;
   }
 
