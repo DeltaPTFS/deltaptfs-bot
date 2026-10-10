@@ -17,7 +17,12 @@ const {
   getBalance,
   getLeaderboard,
   isSheetsConfigured,
+  sheetsRequest,
 } = require('./sheets');
+const { createWebsiteSyncHandler } = require('./website-sync');
+const { websiteConfigured, skyMiles } = require('./website-client');
+const { flightHostCommand, handleFlightHost } = require('./flight-host');
+const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { loadConfig, mergeGuildConfig } = require('./config');
@@ -81,7 +86,10 @@ async function effectiveGuildConfig(guildId) {
 const roblox = createRobloxService({ groupId: config.robloxGroupId });
 const roleSync = createRoleSyncService({ config, roblox });
 const authentication = createAuthenticationService({ config, database, roblox, roleSync, client, getGuildConfig: effectiveGuildConfig });
-const health = startHealthServer({ requestHandler: authentication.handleRequest });
+const websiteSyncHandler = createWebsiteSyncHandler();
+const health = startHealthServer({
+  requestHandler: async (req, res) => (await authentication.handleRequest(req, res)) || (await websiteSyncHandler(req, res)),
+});
 
 const setupCommand = new SlashCommandBuilder()
   .setName('setup')
@@ -693,7 +701,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
-      deleteCommand.toJSON(), newsletterCommand.toJSON(),
+      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -704,6 +712,11 @@ client.once(Events.ClientReady, async (readyClient) => {
       .catch((error) => console.error(`Could not post update for ${guild.id}:`, error));
   }
   scheduleWeeklyReports();
+  const syncedGuilds = [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
+  if (isSheetsConfigured() && syncedGuilds.length) {
+    syncAllGuilds(readyClient, syncedGuilds).catch(console.error);
+    setInterval(() => syncAllGuilds(readyClient, syncedGuilds).catch(console.error), 6 * 60 * 60 * 1000).unref();
+  }
 });
 
 client.on(Events.Error, (error) => {
@@ -721,52 +734,51 @@ client.on(Events.Invalidated, () => {
 });
 
 async function handleSkyMiles(interaction) {
-  if (!isSheetsConfigured()) {
-    await interaction.reply({
-      content: 'SkyMiles tracking is not connected yet. Configure the Google Sheets webhook first.',
-      ephemeral: true,
-    });
+  const approvedGuilds = [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
+  if (!interaction.inGuild() || !approvedGuilds.includes(interaction.guildId)) {
+    await interaction.reply({ content: 'SkyMiles is available in the configured Delta Air Lines servers only.', ephemeral: true });
     return;
   }
-
+  if (!websiteConfigured()) {
+    await interaction.reply({ content: 'SkyMiles integration requires DELTA_WEBSITE_URL and DELTA_FLIGHT_API_SECRET. The website database is the authoritative balance.', ephemeral: true });
+    return;
+  }
   const subcommand = interaction.options.getSubcommand();
   await interaction.deferReply({ ephemeral: subcommand !== 'leaderboard' });
   try {
     if (subcommand === 'balance') {
       const member = interaction.options.getUser('member') ?? interaction.user;
-      const result = await getBalance(member.id);
-      await interaction.editReply(`**${member.displayName}** has **${result.balance.toLocaleString()}** virtual miles.`);
+      const result = await skyMiles('balance', { user_id: member.id });
+      await interaction.editReply('**' + member.displayName + '** has **' + result.balance.toLocaleString() + '** virtual SkyMiles.');
       return;
     }
-
     if (subcommand === 'leaderboard') {
-      const result = await getLeaderboard();
-      const lines = result.leaders.map((entry, index) =>
-        `${index + 1}. **${entry.displayName || entry.userId}** — ${entry.balance.toLocaleString()}`);
-      await interaction.editReply(lines.length ? `**Virtual SkyMiles Leaderboard**\n${lines.join('\n')}` : 'No awards have been recorded yet.');
+      const result = await skyMiles('leaderboard', {});
+      const lines = result.leaders.map((entry, index) => (index + 1) + '. **' + (entry.displayName || entry.userId)
+        + '** — ' + entry.balance.toLocaleString());
+      await interaction.editReply(lines.length ? '**Virtual SkyMiles Leaderboard**\n' + lines.join('\n') : 'No registered SkyMiles members yet.');
       return;
     }
-
     if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.editReply('You need **Manage Server** to award or deduct miles.');
+      await interaction.editReply('You need **Manage Server** to award or deduct SkyMiles.');
       return;
     }
     const member = interaction.options.getUser('member', true);
     const miles = interaction.options.getInteger('miles', true);
-    const result = await awardMiles({
-      userId: member.id,
-      displayName: member.displayName,
-      miles,
-      flightId: interaction.options.getString('flight-id', true),
+    const result = await skyMiles('award', {
+      user_id: member.id, miles, awarded_by_id: interaction.user.id,
+      flight_id: interaction.options.getString('flight-id', true),
       reason: interaction.options.getString('reason', true),
-      awardedById: interaction.user.id,
     });
-    await interaction.editReply(`Recorded **${miles.toLocaleString()}** miles for **${member.displayName}**. New balance: **${result.balance.toLocaleString()}**.`);
+    await interaction.editReply('Recorded **' + result.actual_change.toLocaleString()
+      + '** SkyMiles for **' + member.displayName + '**. New balance: **' + result.balance.toLocaleString()
+      + '**. Google Sheets will be updated by the reliable outbox.');
   } catch (error) {
     console.error('SkyMiles request failed:', error);
-    await interaction.editReply('The Google Sheets request failed. Check the deployment URL, secret, and Apps Script execution log.');
+    await interaction.editReply('SkyMiles was not updated: ' + String(error.message || error).slice(0, 250));
   }
 }
+
 
 async function handleInfo(interaction) {
   if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
@@ -1917,6 +1929,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  if (interaction.commandName === 'sync-roster') {
+    await handleRosterSync(interaction, client, [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean));
+    return;
+  }
+
+  if (interaction.commandName === 'flight-host') {
+    await handleFlightHost(interaction);
+    return;
+  }
+
   if (interaction.commandName === 'skymiles') {
     await handleSkyMiles(interaction);
     return;
@@ -2073,3 +2095,21 @@ async function connectDiscord() {
 }
 
 connectDiscord();
+
+
+// Mirror Discord roster and role changes from both Delta servers to the same workbook.
+async function mirrorDiscordMember(member) {
+  if (!isSheetsConfigured() || member.user.bot) return;
+  const roles = member.roles.cache.filter(role => role.id !== member.guild.id);
+  try {
+    await sheetsRequest('upsertDiscordMember', {
+      userId: member.id, displayName: member.displayName, discordUsername: member.user.username,
+      guildId: member.guild.id, guildName: member.guild.name,
+      roleIds: roles.map(role => role.id), roleNames: roles.map(role => role.name),
+    });
+  } catch (error) {
+    console.error('Google Sheets Discord roster sync failed:', error);
+  }
+}
+client.on(Events.GuildMemberAdd, mirrorDiscordMember);
+client.on(Events.GuildMemberUpdate, (_oldMember, member) => mirrorDiscordMember(member));
