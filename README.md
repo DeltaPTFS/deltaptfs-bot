@@ -294,3 +294,31 @@ Roblox server scripts may call `GET /api/authentication/{roblox_user_id}` with `
 ### Authentication visibility
 
 New members automatically receive `Unauthenticated | Delta Air Lines`. That role can see only `#information`, `#authenticate`, and `#authentication-help`. Authenticated members have Unauthenticated removed. Discord administrators inherently bypass channel permission overwrites.
+
+
+## Delta Air Lines website + both Discord servers + Google Sheets
+
+The authoritative public website is [DeltaPTFS/Roblox-delta-web](https://github.com/DeltaPTFS/Roblox-delta-web). This bot integrates with that repo only. **Do not connect the separate `delta-bot` repository.**
+
+The `/flight-host` command accepts number, departure, destination, UTC time, aircraft, optional gate and remarks. It posts a flight to the website, creates the published flight fillout if missing, and announces both the Discord-only fillout link and SkyMiles booking link. Web admin flight creation uses the same records and sync outbox.
+
+The `/sync-roster` command imports member identities and role IDs from both configured Discord servers. The bot mirrors joins/role changes and reconciles all rosters every six hours.
+
+SkyMiles commands use website PostgreSQL as the **only** authoritative balance database. Google Sheets is a mirror. A user who has not registered for SkyMiles cannot have their balance changed by this bot; they can still submit website forms with Discord-only login.
+
+### Bot deployment environment
+
+```env
+DELTA_WEBSITE_URL=https://your-website.example
+DELTA_FLIGHT_API_SECRET=long-random-secret-matching-website
+DELTA_CREW_GUILD_ID=the-second-discord-server-id
+GOOGLE_SHEETS_WEBHOOK_URL=your-deployed-google-apps-script-web-app-url
+GOOGLE_SHEETS_WEBHOOK_SECRET=script-property-WEBHOOK_SECRET
+WEBSITE_SYNC_SECRET=long-random-secret-matching-website-DELTA_BOT_INTERNAL_SECRET
+```
+
+The Google Apps Script code is **`integrations/google-apps-script.gs`**. Bind it to the [Delta Air Lines tracking workbook](https://docs.google.com/spreadsheets/d/1vQF-dzH9Pun-K02GgJ6dbCEuMC9PkyhKbAWavTu-PQg/edit), set its `WEBHOOK_SECRET` Script Property and deploy it as a web app. Set the website's `DELTA_BOT_INTERNAL_URL` to this bot's HTTPS service origin. The bot receives signed, deduplicated event envelopes on `/internal/website-sync` and forwards them to the workbook. The website retries failed deliveries from its durable outbox.
+
+**Both guild IDs and permissions must be configured.** The bot needs the Guild Members privileged intent and access to each server so role-gated forms remain accurate.
+
+See [the site integration manual](https://github.com/DeltaPTFS/Roblox-delta-web/blob/feat/unified-community-forms-flights/DELTA_AIR_LINES_INTEGRATION.md) for migrations, forms permissions, images, and the release checklist.
