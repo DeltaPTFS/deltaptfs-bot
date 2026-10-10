@@ -734,6 +734,11 @@ client.on(Events.Invalidated, () => {
 });
 
 async function handleSkyMiles(interaction) {
+  const approvedGuilds = [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
+  if (!interaction.inGuild() || !approvedGuilds.includes(interaction.guildId)) {
+    await interaction.reply({ content: 'SkyMiles is available in the configured Delta Air Lines servers only.', ephemeral: true });
+    return;
+  }
   if (!websiteConfigured()) {
     await interaction.reply({ content: 'SkyMiles integration requires DELTA_WEBSITE_URL and DELTA_FLIGHT_API_SECRET. The website database is the authoritative balance.', ephemeral: true });
     return;
