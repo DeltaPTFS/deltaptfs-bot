@@ -2,7 +2,7 @@
 const crypto = require('node:crypto');
 const { sheetsRequest } = require('./sheets');
 
-const TYPES = new Set(['register_member', 'update_member', 'record_transaction', 'form_upsert', 'form_response', 'flight_upsert']);
+const TYPES = new Set(['register_member', 'update_member', 'record_transaction', 'form_upsert', 'form_response', 'flight_upsert', 'discord_roster']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i;
 
 function validWebsiteSignature(rawBody, headers, secret, now = Math.floor(Date.now() / 1000)) {
