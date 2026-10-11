@@ -41,7 +41,7 @@ const {
   targetHierarchyError,
 } = require('./moderation');
 const { version: botVersion } = require('../package.json');
-const { newsletterContent } = require('./member-messages');
+const { newsletterContent, sendNewMemberWelcome, MAIN_DELTA_GUILD_ID } = require('./member-messages');
 const {
   containsDiscordInvite,
   createMessageSnapshotCache,
@@ -616,6 +616,12 @@ async function applyChannels(guild) {
 
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
+  // Send the welcome independently so DM privacy settings never prevent
+  // the new-member role or logging workflows.
+  void sendNewMemberWelcome(member, {
+    guildId: process.env.WELCOME_GUILD_ID?.trim() || MAIN_DELTA_GUILD_ID,
+    websiteUrl: process.env.DELTA_WEBSITE_URL?.trim(),
+  });
   const guildConfig = await effectiveGuildConfig(member.guild.id).catch(() => config);
   const unauthenticated = (guildConfig.unauthenticatedRoleId
     && await member.guild.roles.fetch(guildConfig.unauthenticatedRoleId).catch(() => null))
