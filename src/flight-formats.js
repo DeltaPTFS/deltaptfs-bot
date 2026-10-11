@@ -202,7 +202,7 @@ async function action(interaction){
     // A staff-uploaded image from the website is sent as a Discord file attachment
     // BELOW the text, matching the established Delta announcement style.
     const source=process.env.DELTA_FLIGHT_IMAGE_URL ||
-      (process.env.DELTA_WEBSITE_URL?.replace(/\\/+$/,'')+'/gallery/media/flight-promo');
+      (process.env.DELTA_WEBSITE_URL?.replace(/\/+$/,'')+'/gallery/media/flight-promo');
     const url=allowedLink(source,'image');
     if(url){
       try{
