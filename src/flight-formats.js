@@ -165,6 +165,7 @@ async function preview(interaction){
       amenities:interaction.options.getString('amenities'),service:interaction.options.getString('service'),
       arrival:interaction.options.getString('arrival'),miles:interaction.options.getInteger('miles')};
     const message=details(op);
+    if(message.length>1770)throw new Error('This message is too long for the Discord preview. Shorten seat configuration, amenities or reason.');
     const nonce=crypto.randomBytes(12).toString('hex');
     ongoing.set(nonce,{op,message,userId:interaction.user.id,guildId:interaction.guildId,channelId:interaction.channelId,expires:Date.now()+10*60*1000});
     await interaction.editReply({content:'**Flight message preview — not yet published**\n\n'+message,
@@ -198,10 +199,25 @@ async function action(interaction){
     const channel=await interaction.guild.channels.fetch(saved.channelId);
     if(!channel?.isTextBased())throw new Error('Original channel is unavailable');
     const opt={allowedMentions:{parse:[]}};
-    // Configure a permanent publicly accessible image URL or omit it.
-    const imageUrl=process.env.DELTA_FLIGHT_IMAGE_URL||'';
-    const url=allowedLink(imageUrl,'image');
-    if(url)opt.embeds=[{image:{url}}];
+    // A staff-uploaded image from the website is sent as a Discord file attachment
+    // BELOW the text, matching the established Delta announcement style.
+    const source=process.env.DELTA_FLIGHT_IMAGE_URL ||
+      (process.env.DELTA_WEBSITE_URL?.replace(/\\/+$/,'')+'/gallery/media/flight-promo');
+    const url=allowedLink(source,'image');
+    if(url){
+      try{
+        const image=await fetch(url,{signal:AbortSignal.timeout(12000)});
+        const kind=image.headers.get('content-type')||'';
+        const size=Number(image.headers.get('content-length')||0);
+        if(image.ok&&kind.startsWith('image/')&&size<3000000){
+          const bytes=Buffer.from(await image.arrayBuffer());
+          if(bytes.length<3000000){
+            const ext=kind.includes('png')?'png':kind.includes('webp')?'webp':'jpg';
+            opt.files=[new AttachmentBuilder(bytes,{name:'delta-flight-promo.'+ext})];
+          }
+        }
+      }catch(error){console.warn('Flight picture not yet uploaded; sending text announcement:',error.message);}
+    }
     const posted=await channel.send({content:saved.message,...opt});
     const state=updateFor({...saved.op,time:saved.op.time||saved.op.flight.starts_at});
     if(state)await updateFlightStatus(saved.op.flight.id,state);
