@@ -2,6 +2,20 @@
 
 The main Discord bot for Delta Airlines. One command safely previews and creates the server's role and channel layout.
 
+
+## Automatic welcome for new Delta Air Lines members
+
+`deltaptfs-bot` automatically sends every non-bot user joining the **main Delta Air Lines Discord server** a welcome **DM** with our community introduction, verification instructions, SkyMiles information, and a direct link to the official roleplay website (`https://roblox-delta-web.vercel.app`). No slash command is necessary.
+
+- Trigger: Discord `GuildMemberAdd`, main-server ID `1538738611988467782` (override with `WELCOME_GUILD_ID` only if the main server changes).
+- Optional website link override: `DELTA_WEBSITE_URL`; defaults to the currently deployed website.
+- Welcome uses the custom Delta and SkyTeam emoji IDs, avoids `@everyone` pings, and stays below Discord's 2,000-character message limit.
+- Private DMs can be disabled by individual members. In that case delivery is logged as a warning and the normal join role assignment, audit logging and roster sync still run.
+- Turn on **Server Members Intent** for this application in Discord Developer Portal → Bot → Privileged Gateway Intents; it is already part of the bot's gateway intents.
+- Host runs **Node.js 20+**, build `npm install && npm run build`, start `npm start`. Restart or redeploy the running bot after merging this change.
+
+The existing post-authentication welcome is separate: this message is sent once at **server join**, regardless of whether a member has completed Roblox verification.
+
 ## Proposed role hierarchy
 
 Running `/setup mode:Preview only section:Roles and categories/channels` shows the complete role and channel plan without changing the server. Roles are created in this top-to-bottom hierarchy:
