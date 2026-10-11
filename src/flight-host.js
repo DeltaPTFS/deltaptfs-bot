@@ -50,7 +50,7 @@ async function handleFlightHost(interaction) {
         { name: 'SkyMiles Booking', value: '[Book a flight](' + output.booking_url + ')' },
       ).setFooter({ text: 'Keep Climbing, Delta Air Lines · Unofficial Roblox Roleplay' });
     await interaction.channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-    await interaction.editReply('Flight ' + number + ' created on the website, queued for Sheets, and posted here.\nCrew fillout: ' + output.form_url);
+    await interaction.editReply('Flight ' + number + ' created on the website, queued for Sheets, and posted here.\nWebsite Flight ID: **' + output.flight_id + '** (use this number in /format).\nCrew fillout: ' + output.form_url);
   } catch (error) {
     console.error('Flight host failed:', error);
     await interaction.editReply('The flight could not be published: ' + String(error.message || error).slice(0, 300));
