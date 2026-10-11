@@ -12,7 +12,7 @@ function memberRow(member) {
   return {
     userId: member.id, displayName: member.displayName, discordUsername: member.user.username,
     guildId: member.guild.id, guildName: member.guild.name,
-    roleIds: roles.map(role => role.id), roleNames: roles.map(role => role.name)
+    roleIds: Array.from(roles.values(), role => role.id), roleNames: Array.from(roles.values(), role => role.name)
   };
 }
 

@@ -22,6 +22,7 @@ const {
 const { createWebsiteSyncHandler } = require('./website-sync');
 const { websiteConfigured, skyMiles } = require('./website-client');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
+const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
 const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
@@ -701,7 +702,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
-      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(),
+      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(), flightFormatCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -1902,6 +1903,10 @@ client.on(Events.GuildMemberRemove, async (member) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton() && interaction.customId.startsWith('flight-format:')) {
+    await flightFormatAction(interaction);
+    return;
+  }
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('update-remove:')) {
     await handleUpdateRemoveSelect(interaction);
     return;
@@ -1934,6 +1939,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  if (interaction.commandName === 'format') {
+    await previewFlightFormat(interaction);
+    return;
+  }
   if (interaction.commandName === 'flight-host') {
     await handleFlightHost(interaction);
     return;

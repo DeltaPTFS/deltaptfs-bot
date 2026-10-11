@@ -100,7 +100,8 @@ function syncEvent(event) {
   const types = {
     register_member: memberEvent, update_member: memberEvent,
     record_transaction: transactionEvent, flight_upsert: flightEvent,
-    form_upsert: formEvent, form_response: formResponseEvent
+    form_upsert: formEvent, form_response: formResponseEvent,
+    discord_roster: (event) => upsertDiscordRoster(event.payload.members)
   };
   const apply = types[event.event_type];
   if (!apply || !event.payload || typeof event.payload !== 'object') throw Error('Unsupported sync event');
