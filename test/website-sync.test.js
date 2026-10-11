@@ -7,7 +7,7 @@ const { validWebsiteSignature, createWebsiteSyncHandler } = require('../src/webs
 const { memberRow } = require('../src/roster-sync');
 
 const secret = 'strong-test-secret-for-delta-air-lines-123456';
-const timestamp = '1791645600';
+const timestamp = String(Math.floor(Date.now() / 1000));
 function headers(raw) {
   const signature = crypto.createHmac('sha256', secret).update(timestamp + '.').update(raw).digest('hex');
   return { 'x-website-timestamp': timestamp, 'x-website-signature': 'sha256=' + signature };
