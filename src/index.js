@@ -41,7 +41,7 @@ const {
   targetHierarchyError,
 } = require('./moderation');
 const { version: botVersion } = require('../package.json');
-const { newsletterContent, sendNewMemberWelcome, MAIN_DELTA_GUILD_ID } = require('./member-messages');
+const { newsletterContent, sendAuthenticatedWelcome, MAIN_DELTA_GUILD_ID } = require('./member-messages');
 const {
   containsDiscordInvite,
   createMessageSnapshotCache,
@@ -616,12 +616,6 @@ async function applyChannels(guild) {
 
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
-  // Send the welcome independently so DM privacy settings never prevent
-  // the new-member role or logging workflows.
-  void sendNewMemberWelcome(member, {
-    guildId: process.env.WELCOME_GUILD_ID?.trim() || MAIN_DELTA_GUILD_ID,
-    websiteUrl: process.env.DELTA_WEBSITE_URL?.trim(),
-  });
   const guildConfig = await effectiveGuildConfig(member.guild.id).catch(() => config);
   const unauthenticated = (guildConfig.unauthenticatedRoleId
     && await member.guild.roles.fetch(guildConfig.unauthenticatedRoleId).catch(() => null))
@@ -652,6 +646,12 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   if (newMember.user.bot) return;
   const addedRoles = [...newMember.roles.cache.values()].filter((role) => !oldMember.roles.cache.has(role.id));
   const removedRoles = [...oldMember.roles.cache.values()].filter((role) => !newMember.roles.cache.has(role.id));
+  // This bot sends onboarding DMs only after the configured Authenticated role is granted.
+  // The old/new role comparison prevents duplicates on routine member updates.
+  if (newMember.guild.id === MAIN_DELTA_GUILD_ID &&
+      addedRoles.some((role) => role.id === '1539005066512572568')) {
+    void sendAuthenticatedWelcome(newMember);
+  }
   if (addedRoles.length || removedRoles.length) {
     const actor = await recentAuditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
     await sendServerLog(newMember.guild, {
