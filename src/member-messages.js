@@ -57,6 +57,18 @@ async function sendNewMemberWelcome(member, { guildId = MAIN_DELTA_GUILD_ID, web
   }
 }
 
+/** Send the authentication DM once when the authenticated role is newly granted. */
+async function sendAuthenticatedWelcome(member, { guildId = MAIN_DELTA_GUILD_ID, logger = console } = {}) {
+  if (!member || member.user?.bot || member.guild?.id !== guildId) return false;
+  try {
+    await member.send({ content: AUTHENTICATION_WELCOME_MESSAGE, allowedMentions: { parse: [] } });
+    return true;
+  } catch (error) {
+    logger.warn?.(`Authentication welcome DM unavailable for ${member.id}: ${error?.message || error}`);
+    return false;
+  }
+}
+
 function newsletterContent(value) {
   const content = value?.trim();
   if (!content) throw new Error('Newsletter content cannot be empty.');
@@ -64,4 +76,4 @@ function newsletterContent(value) {
   return content;
 }
 
-module.exports = { AUTHENTICATION_WELCOME_MESSAGE, DELTA_WEBSITE_URL, MAIN_DELTA_GUILD_ID, newMemberWelcomeMessage, sendNewMemberWelcome, newsletterContent };
+module.exports = { AUTHENTICATION_WELCOME_MESSAGE, DELTA_WEBSITE_URL, MAIN_DELTA_GUILD_ID, newMemberWelcomeMessage, sendNewMemberWelcome, sendAuthenticatedWelcome, newsletterContent };
