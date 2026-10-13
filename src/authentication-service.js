@@ -1,5 +1,4 @@
 const { createHash, randomBytes, timingSafeEqual } = require('node:crypto');
-const { AUTHENTICATION_WELCOME_MESSAGE } = require('./member-messages');
 
 const DELTA_BLUE = 0x071D49;
 const hashState = (state) => createHash('sha256').update(state).digest('hex');
@@ -211,7 +210,6 @@ function createAuthenticationService({ config, database, roblox, roleSync, clien
           robloxRoleName: sync.membership?.role?.name,
         });
       } catch (syncError) { console.error('Post-authentication role sync failed:', syncError); }
-      await member.send({ content: AUTHENTICATION_WELCOME_MESSAGE }).catch(() => {});
       html(response, 200, 'Authentication complete', `${currentUser.name} is now linked to your Discord account.`);
     } catch (error) {
       console.error('Roblox authentication callback failed:', error);
