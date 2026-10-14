@@ -24,6 +24,7 @@ const { websiteConfigured, skyMiles } = require('./website-client');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
 const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
 const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
+const {command:skyMilesSignupCommand,handle:handleSkyMilesSignup}=require('./skymiles-command');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { loadConfig, mergeGuildConfig } = require('./config');
@@ -118,8 +119,8 @@ const setupCommand = new SlashCommandBuilder()
       ),
   );
 
-const skyMilesCommand = new SlashCommandBuilder()
-  .setName('skymiles')
+const skyMilesLedgerCommand = new SlashCommandBuilder()
+  .setName('skymiles-ledger')
   .setDescription('View or manage the virtual SkyMiles ledger')
   .addSubcommand((subcommand) => subcommand
     .setName('balance')
@@ -703,7 +704,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
   try {
     await readyClient.application.commands.set([
-      setupCommand.toJSON(), skyMilesCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
+      setupCommand.toJSON(), skyMilesSignupCommand.toJSON(), skyMilesLedgerCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       logsUpdateCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
@@ -1955,6 +1956,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.commandName === 'skymiles') {
+    await handleSkyMilesSignup(interaction);
+    return;
+  }
+  if (interaction.commandName === 'skymiles-ledger') {
     await handleSkyMiles(interaction);
     return;
   }
