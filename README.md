@@ -340,6 +340,6 @@ See [the site integration manual](https://github.com/DeltaPTFS/Roblox-delta-web/
 
 ## SkyMiles signup announcement
 
-Run **`/skymiles`** in the main Delta Air Lines Discord server to post the SkyMiles signup guide. This requires **Manage Server** and posts the formatted message with a **Join Delta SkyMiles** link button using the ExternalLink emoji. Optionally upload a `top-banner` and `bottom-banner` image (up to 8 MB each) to appear above and below the guide.
+Run **`/skymiles`** in the main Delta Air Lines Discord server to post the SkyMiles signup guide. This requires **Manage Server** and posts the formatted message with a **Join Delta SkyMiles** blue-purple (Discord Primary) button using the ExternalLink emoji. Optionally upload a `top-banner` and `bottom-banner` image (up to 8 MB each). When the bottom banner is provided, the blue-purple button appears **immediately beneath that image**. If it is omitted, the button appears beneath the guide. Discord's colored buttons cannot directly open URLs, so clicking opens a private message containing the official website link.
 
 The existing balance, leaderboard, and award tools are preserved under **`/skymiles-ledger balance`**, **`/skymiles-ledger leaderboard`**, and **`/skymiles-ledger award`**. The website's registration welcome DM and this bot's Authenticated-role welcome DM have not been changed. The Crew bot no longer owns the signup command. Restart or deploy both bots so Discord command registrations update.
