@@ -24,7 +24,7 @@ const { websiteConfigured, skyMiles } = require('./website-client');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
 const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
 const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
-const {command:skyMilesSignupCommand,handle:handleSkyMilesSignup}=require('./skymiles-command');
+const {command:skyMilesSignupCommand,handle:handleSkyMilesSignup,handleWebsiteButton}=require('./skymiles-command');
 const { startHealthServer } = require('./health');
 const { INFO_MESSAGES, infoMessagePayload, missingBannerEnvironmentKeys } = require('./info');
 const { loadConfig, mergeGuildConfig } = require('./config');
@@ -1910,6 +1910,10 @@ client.on(Events.GuildMemberRemove, async (member) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton() && interaction.customId === 'skymiles:open-website') {
+    await handleWebsiteButton(interaction);
+    return;
+  }
   if (interaction.isButton() && interaction.customId.startsWith('flight-format:')) {
     await flightFormatAction(interaction);
     return;
