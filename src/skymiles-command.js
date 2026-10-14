@@ -66,15 +66,29 @@ async function handle(interaction,{guildId=MAIN_GUILD}={}){
   const channel=interaction.channel;
   try{
     if(top)await channel.send({files:[await bannerFile(top,'skymiles-top')],allowedMentions:{parse:[]}});
-    const button=new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(WEBSITE).setLabel('Join Delta SkyMiles')
+    const button=new ButtonBuilder().setStyle(ButtonStyle.Primary).setCustomId('skymiles:open-website').setLabel('Join Delta SkyMiles')
       .setEmoji({id:'1540927590418612366',name:'ExternalLink'});
     const row=new ActionRowBuilder().addComponents(button);
-    await channel.send({content:SIGNUP_TEXT,components:[row],allowedMentions:{parse:[]}});
-    if(bottom)await channel.send({files:[await bannerFile(bottom,'skymiles-bottom')],allowedMentions:{parse:[]}});
+    // Attach the blue-purple button to the LAST banner so it displays below the image.
+    // If no bottom banner was uploaded, place it below the announcement itself.
+    await channel.send({content:SIGNUP_TEXT,...(bottom?{}:{components:[row]}),allowedMentions:{parse:[]}});
+    if(bottom)await channel.send({files:[await bannerFile(bottom,'skymiles-bottom')],components:[row],allowedMentions:{parse:[]}});
     await interaction.editReply('SkyMiles signup guide posted.');
   }catch(err){
     console.error('SkyMiles signup guide failed:',err);
     await interaction.editReply('Unable to post the guide. Please confirm my permissions to send messages, links, and attachments.');
   }
 }
-module.exports={command,handle,SIGNUP_TEXT,MAIN_GUILD,imageOk};
+async function handleWebsiteButton(interaction){
+  if(!interaction.isButton() || interaction.customId!=='skymiles:open-website')return false;
+  const openLink=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(WEBSITE).setLabel('Open SkyMiles Website')
+      .setEmoji({id:'1540927590418612366',name:'ExternalLink'})
+  );
+  await interaction.reply({
+    content:'**Delta SkyMiles** — use the link below to open the official community website.',
+    components:[openLink],ephemeral:true,allowedMentions:{parse:[]}
+  });
+  return true;
+}
+module.exports={command,handle,handleWebsiteButton,SIGNUP_TEXT,MAIN_GUILD,imageOk};
