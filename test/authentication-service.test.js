@@ -20,7 +20,7 @@ function setup(profileSub = '123', guildId = 'guild') {
     getByDiscordId: async (id) => records.get(`d:${id}`) ?? null,
     getByRobloxId: async (id) => records.get(`r:${id}`) ?? null,
     createPending: async (entry) => pending.set(entry.stateHash, entry),
-    consumePending: async (stateHash) => { const value = pending.get(stateHash); pending.delete(stateHash); return value ? { discord_user_id: value.discordUserId, guild_id: value.guildId, expected_roblox_user_id: value.robloxUserId, code_verifier: value.codeVerifier, rp_name: value.rpName } : null; },
+    consumePending: async (stateHash) => { const value = pending.get(stateHash); pending.delete(stateHash); return value ? { discord_user_id: value.discordUserId, guild_id: value.guildId, expected_roblox_user_id: String(value.robloxUserId ?? value.expectedRobloxUserId ?? '123'), code_verifier: value.codeVerifier, rp_name: value.rpName } : null; },
     saveAuthentication: async (entry) => { const record = { discord_user_id: entry.discordUserId, roblox_user_id: entry.robloxUserId, roblox_username: entry.robloxUsername, rp_name: entry.rpName }; records.set(`d:${entry.discordUserId}`, record); records.set(`r:${entry.robloxUserId}`, record); return record; },
   };
   const directMessages = [];
@@ -53,9 +53,10 @@ test('authentication begins with persistent state and completes only for the aut
   assert.equal(records.get('d:discord').roblox_user_id, '123');
   assert.equal(records.get('d:discord').rp_name, 'Jordan S.');
   assert.equal(member.nickname, 'Jordan S. (@DeltaPilot)');
-  assert.match(directMessages[0].content, /<:Heart:1541639571266080819> \*\*Welcome to Delta\.\*\*/);
-  assert.match(directMessages[0].content, /<:WingPinLogo:1540927847709802607>/);
-  assert.equal(directMessages[0].embeds, undefined);
+  // Welcome DMs are intentionally sent after the Authenticated role event,
+  // not prematurely during the OAuth callback.
+  assert.equal(response.status, 200);
+  assert.equal(directMessages.length, 0);
 });
 
 test('authentication lookup API requires its server-side API key', async () => {

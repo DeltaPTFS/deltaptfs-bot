@@ -81,6 +81,34 @@ Running `/setup mode:Preview only section:Roles and categories/channels` shows t
 
 Each `━━ CATEGORY ━━` separator is a real Discord role placed below the roles in its section, as requested. Setup explicitly resets the positions on every run, so existing server roles or Discord's default role-creation position cannot accidentally move a separator above its members. Every member role and separator has its own unique, explicit hexadecimal color. Chief positions are grouped under the Board of Directors and Leadership sections; department leads are grouped under Executives. Senior Administration and Administration receive management permissions, while Senior Moderation and Moderation receive appropriately limited member-moderation permissions. Other roles are organizational and do not receive elevated Discord permissions. The bot assigns itself the `Delta Virtual Assistant | Delta Air Lines` role during setup. Discord will not allow the bot to create or assign roles above its own highest managed role, so place the bot's managed integration role near the top before applying the setup.
 
+
+### Admin-managed SkyMiles ledger (website is the source of truth)
+
+The bot includes `/skymiles-ledger` with these subcommands:
+
+- `balance [member]`, `leaderboard` — read-only virtual miles.
+- `history member` — private recent transactions (owner of account or website Admin).
+- `add member amount reason` — add virtual miles.
+- `deduct member amount reason` — deduct virtual miles, never below zero.
+- `set member balance reason` — correct the exact account balance.
+- `award-flight member amount flight-id reason` — record a flight-based award.
+- `award member miles flight-id reason` — legacy signed adjustment, still supported.
+
+**Only current Discord Founder/Owner and Staff Admin role holders** can mutate balances.
+The bot checks live guild membership first, and the website independently checks
+the **live main-server Discord roles** plus an active website SkyMiles account.
+The Discord `Manage Server` permission alone does not grant this access.
+Every write requires a reason, uses a unique Discord interaction ID to avoid
+duplicate awards on retries, and records the transaction and staff audit trail
+in the website PostgreSQL database. Sheets is only a downstream mirror.
+
+The bot and website must have matching `DELTA_FLIGHT_API_SECRET` (at least
+32 characters), and the bot needs `DELTA_WEBSITE_URL` set to your
+site's HTTPS URL. An optional `SKYMILES_ADMIN_ROLE_IDS` overrides the bot's
+local UI allowlist; keep it aligned with the website's
+`OWNER_DISCORD_ROLE_IDS` and `ADMIN_DISCORD_ROLE_IDS`. The website always
+enforces its own authoritative role configuration.
+
 ### Tracking SkyMiles professionally
 
 The role ladder matches the current public Medallion order: **SkyMiles Member → Silver → Gold → Platinum → Diamond**. Million Miler is a separate lifetime recognition program, not a Medallion tier, so it is not included in this progression.
