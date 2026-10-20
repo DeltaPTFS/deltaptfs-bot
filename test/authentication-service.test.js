@@ -20,7 +20,7 @@ function setup(profileSub = '123', guildId = 'guild') {
     getByDiscordId: async (id) => records.get(`d:${id}`) ?? null,
     getByRobloxId: async (id) => records.get(`r:${id}`) ?? null,
     createPending: async (entry) => pending.set(entry.stateHash, entry),
-    consumePending: async (stateHash) => { const value = pending.get(stateHash); pending.delete(stateHash); return value ? { discord_user_id: value.discordUserId, guild_id: value.guildId, expected_roblox_user_id: value.robloxUserId, code_verifier: value.codeVerifier, rp_name: value.rpName } : null; },
+    consumePending: async (stateHash) => { const value = pending.get(stateHash); pending.delete(stateHash); return value ? { discord_user_id: value.discordUserId, guild_id: value.guildId, expected_roblox_user_id: String(value.robloxUserId ?? value.expectedRobloxUserId ?? '123'), code_verifier: value.codeVerifier, rp_name: value.rpName } : null; },
     saveAuthentication: async (entry) => { const record = { discord_user_id: entry.discordUserId, roblox_user_id: entry.robloxUserId, roblox_username: entry.robloxUsername, rp_name: entry.rpName }; records.set(`d:${entry.discordUserId}`, record); records.set(`r:${entry.robloxUserId}`, record); return record; },
   };
   const directMessages = [];
