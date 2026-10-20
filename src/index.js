@@ -21,6 +21,7 @@ const {
 } = require('./sheets');
 const { createWebsiteSyncHandler } = require('./website-sync');
 const { websiteConfigured, skyMiles } = require('./website-client');
+const {hasSkyMilesAdminRole} = require('./skymiles-admin');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
 const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
 const { rosterCommand, handleRosterSync, syncAllGuilds } = require('./roster-sync');
@@ -755,18 +756,15 @@ client.on(Events.Invalidated, () => {
   health.markError(new Error('Discord invalidated the gateway session. Check the configured gateway intents.'));
 });
 
-// This is the same role allowlist the website Staff Admin panel uses.
-// The WEBSITE also re-checks live Discord roles before committing any mutation.
-const SKY_MILES_ADMIN_ROLES = new Set(
-  (process.env.SKYMILES_ADMIN_ROLE_IDS || '1539005297417519205,1539005030189891684,1539005033020919828')
-    .split(',').map((id) => id.trim()).filter(Boolean)
-);
-
+// Confirm a current Discord guild role before every protected action.
+// The website also validates that same member's Owner/Admin roles live.
 async function skyMilesAdminAllowed(interaction) {
   if (!interaction.inGuild() || interaction.guildId !== (config.guildId || MAIN_DELTA_GUILD_ID)) return false;
   try {
     const member = await interaction.guild.members.fetch({user:interaction.user.id,force:true});
-    return Boolean(member && member.roles.cache.some((role) => SKY_MILES_ADMIN_ROLES.has(role.id)));
+    return Boolean(member && hasSkyMilesAdminRole(
+      member.roles.cache.map((role) => role.id), process.env.SKYMILES_ADMIN_ROLE_IDS
+    ));
   } catch (error) {
     console.warn('Live Discord SkyMiles role check failed:', String(error.message || error));
     return false;
