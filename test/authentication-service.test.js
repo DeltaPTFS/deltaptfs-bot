@@ -53,9 +53,10 @@ test('authentication begins with persistent state and completes only for the aut
   assert.equal(records.get('d:discord').roblox_user_id, '123');
   assert.equal(records.get('d:discord').rp_name, 'Jordan S.');
   assert.equal(member.nickname, 'Jordan S. (@DeltaPilot)');
-  assert.match(directMessages[0].content, /<:Heart:1541639571266080819> \*\*Welcome to Delta\.\*\*/);
-  assert.match(directMessages[0].content, /<:WingPinLogo:1540927847709802607>/);
-  assert.equal(directMessages[0].embeds, undefined);
+  // Welcome DMs are intentionally sent after the Authenticated role event,
+  // not prematurely during the OAuth callback.
+  assert.equal(response.status, 200);
+  assert.equal(directMessages.length, 0);
 });
 
 test('authentication lookup API requires its server-side API key', async () => {
