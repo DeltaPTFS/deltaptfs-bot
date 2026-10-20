@@ -79,9 +79,11 @@ test('disabled DMs are logged without interrupting member join handling', async 
   assert.match(logs[0], /member3/);
 });
 
-test('guildMemberAdd event invokes welcome without delaying role or logging workflows', () => {
+test('welcome DM waits for successful Authenticated role and join logs stay intact', () => {
   const source = fs.readFileSync('src/index.js', 'utf8');
-  assert.match(source, /sendNewMemberWelcome\(member,/);
-  assert.match(source, /void sendNewMemberWelcome/);
+  assert.match(source, /client\.on\(Events\.GuildMemberAdd/);
   assert.match(source, /Member Joined/);
+  assert.match(source, /client\.on\(Events\.GuildMemberUpdate/);
+  assert.match(source, /void sendAuthenticatedWelcome\(newMember\)/);
+  assert.doesNotMatch(source, /sendNewMemberWelcome\(member,/);
 });
