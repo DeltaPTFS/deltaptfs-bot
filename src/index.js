@@ -121,21 +121,35 @@ const setupCommand = new SlashCommandBuilder()
 
 const skyMilesLedgerCommand = new SlashCommandBuilder()
   .setName('skymiles-ledger')
-  .setDescription('View or manage the virtual SkyMiles ledger')
-  .addSubcommand((subcommand) => subcommand
-    .setName('balance')
-    .setDescription('View a member’s virtual SkyMiles balance')
-    .addUserOption((option) => option.setName('member').setDescription('Member to view')))
-  .addSubcommand((subcommand) => subcommand
-    .setName('leaderboard')
-    .setDescription('View the virtual SkyMiles leaderboard'))
-  .addSubcommand((subcommand) => subcommand
-    .setName('award')
-    .setDescription('Award or deduct virtual SkyMiles (Manage Server only)')
-    .addUserOption((option) => option.setName('member').setDescription('Member to update').setRequired(true))
-    .addIntegerOption((option) => option.setName('miles').setDescription('Positive award or negative correction').setRequired(true))
-    .addStringOption((option) => option.setName('flight-id').setDescription('Flight or event identifier').setRequired(true))
-    .addStringOption((option) => option.setName('reason').setDescription('Reason for the ledger entry').setRequired(true)));
+  .setDescription('Review virtual SkyMiles or adjust balances with Admin permissions')
+  .addSubcommand((sub) => sub.setName('balance').setDescription('View a member’s virtual SkyMiles')
+    .addUserOption((o) => o.setName('member').setDescription('Member to check')))
+  .addSubcommand((sub) => sub.setName('leaderboard').setDescription('Show top SkyMiles members'))
+  .addSubcommand((sub) => sub.setName('history').setDescription('Review a member’s latest mile changes')
+    .addUserOption((o) => o.setName('member').setDescription('Member to check').setRequired(true)))
+  .addSubcommand((sub) => sub.setName('add').setDescription('Admin: Add virtual SkyMiles')
+    .addUserOption((o) => o.setName('member').setDescription('Member to award').setRequired(true))
+    .addIntegerOption((o) => o.setName('amount').setDescription('Miles to add').setMinValue(1).setMaxValue(1000000).setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Required audit reason').setMaxLength(220).setRequired(true)))
+  .addSubcommand((sub) => sub.setName('deduct').setDescription('Admin: Deduct virtual SkyMiles')
+    .addUserOption((o) => o.setName('member').setDescription('Member to deduct from').setRequired(true))
+    .addIntegerOption((o) => o.setName('amount').setDescription('Miles to deduct').setMinValue(1).setMaxValue(1000000).setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Required audit reason').setMaxLength(220).setRequired(true)))
+  .addSubcommand((sub) => sub.setName('set').setDescription('Admin: Correct a SkyMiles balance')
+    .addUserOption((o) => o.setName('member').setDescription('Member to correct').setRequired(true))
+    .addIntegerOption((o) => o.setName('balance').setDescription('New absolute balance').setMinValue(0).setMaxValue(100000000).setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Why the balance was corrected').setMaxLength(220).setRequired(true)))
+  .addSubcommand((sub) => sub.setName('award-flight').setDescription('Admin: Award SkyMiles for a completed flight')
+    .addUserOption((o) => o.setName('member').setDescription('Member who completed the flight').setRequired(true))
+    .addIntegerOption((o) => o.setName('amount').setDescription('Approved earned miles').setMinValue(1).setMaxValue(1000000).setRequired(true))
+    .addStringOption((o) => o.setName('flight-id').setDescription('Flight or event ID').setMaxLength(70).setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Reason for the award').setMaxLength(220).setRequired(true)))
+  // Preserve existing integrations using /skymiles-ledger award.
+  .addSubcommand((sub) => sub.setName('award').setDescription('Admin: Legacy signed mile adjustment')
+    .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
+    .addIntegerOption((o) => o.setName('miles').setDescription('Positive award or negative correction').setRequired(true))
+    .addStringOption((o) => o.setName('flight-id').setDescription('Flight reference').setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Required reason').setRequired(true)));
 
 const versionCommand = new SlashCommandBuilder()
   .setName('bot-version')
@@ -741,49 +755,97 @@ client.on(Events.Invalidated, () => {
   health.markError(new Error('Discord invalidated the gateway session. Check the configured gateway intents.'));
 });
 
+// This is the same role allowlist the website Staff Admin panel uses.
+// The WEBSITE also re-checks live Discord roles before committing any mutation.
+const SKY_MILES_ADMIN_ROLES = new Set(
+  (process.env.SKYMILES_ADMIN_ROLE_IDS || '1539005297417519205,1539005030189891684,1539005033020919828')
+    .split(',').map((id) => id.trim()).filter(Boolean)
+);
+
+async function skyMilesAdminAllowed(interaction) {
+  if (!interaction.inGuild() || interaction.guildId !== (config.guildId || MAIN_DELTA_GUILD_ID)) return false;
+  try {
+    const member = await interaction.guild.members.fetch({user:interaction.user.id,force:true});
+    return Boolean(member && member.roles.cache.some((role) => SKY_MILES_ADMIN_ROLES.has(role.id)));
+  } catch (error) {
+    console.warn('Live Discord SkyMiles role check failed:', String(error.message || error));
+    return false;
+  }
+}
+
 async function handleSkyMiles(interaction) {
   const approvedGuilds = [config.guildId, process.env.DELTA_CREW_GUILD_ID].filter(Boolean);
   if (!interaction.inGuild() || !approvedGuilds.includes(interaction.guildId)) {
-    await interaction.reply({ content: 'SkyMiles is available in the configured Delta Air Lines servers only.', ephemeral: true });
+    await interaction.reply({ content: 'SkyMiles is available in Delta Air Lines community servers only.', ephemeral: true });
     return;
   }
   if (!websiteConfigured()) {
-    await interaction.reply({ content: 'SkyMiles integration requires DELTA_WEBSITE_URL and DELTA_FLIGHT_API_SECRET. The website database is the authoritative balance.', ephemeral: true });
+    await interaction.reply({ content: 'SkyMiles is not yet connected. The website is the authoritative ledger; contact Ownership to configure the website connection.', ephemeral: true });
     return;
   }
-  const subcommand = interaction.options.getSubcommand();
-  await interaction.deferReply({ ephemeral: subcommand !== 'leaderboard' });
+  const action = interaction.options.getSubcommand();
+  const mutation = ['add','deduct','set','award-flight','award'].includes(action);
+  // Guard before defer/API call so unauthorized users never change balances.
+  if (mutation && !(await skyMilesAdminAllowed(interaction))) {
+    await interaction.reply({ content: 'Only Owner and Staff Admin roles with website Admin access can adjust SkyMiles.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: action !== 'leaderboard' });
   try {
-    if (subcommand === 'balance') {
+    if (action === 'balance') {
       const member = interaction.options.getUser('member') ?? interaction.user;
-      const result = await skyMiles('balance', { user_id: member.id });
-      await interaction.editReply('**' + member.displayName + '** has **' + result.balance.toLocaleString() + '** virtual SkyMiles.');
+      const result = await skyMiles('balance', {user_id:member.id});
+      await interaction.editReply('**' + member.displayName + '** has **' + Number(result.balance).toLocaleString() + '** virtual SkyMiles.');
       return;
     }
-    if (subcommand === 'leaderboard') {
+    if (action === 'leaderboard') {
       const result = await skyMiles('leaderboard', {});
-      const lines = result.leaders.map((entry, index) => (index + 1) + '. **' + (entry.displayName || entry.userId)
-        + '** — ' + entry.balance.toLocaleString());
+      const lines = (result.leaders || []).map((entry, i) =>
+        (i + 1) + '. **' + (entry.displayName || entry.userId) + '** — ' + Number(entry.balance).toLocaleString());
       await interaction.editReply(lines.length ? '**Virtual SkyMiles Leaderboard**\n' + lines.join('\n') : 'No registered SkyMiles members yet.');
       return;
     }
-    if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.editReply('You need **Manage Server** to award or deduct SkyMiles.');
+    const member = interaction.options.getUser('member', true);
+    if (action === 'history') {
+      // History is private to the member or an Admin: never publicize another
+      // member's ledger to the server.
+      if (member.id !== interaction.user.id && !(await skyMilesAdminAllowed(interaction))) {
+        await interaction.editReply('Only the member or a website Staff Admin can view this history.');
+        return;
+      }
+      const result = await skyMiles('history', {user_id:member.id});
+      const lines = (result.transactions || []).map((t) =>
+        (Number(t.change) >= 0 ? '+' : '') + Number(t.change).toLocaleString()
+        + ' — ' + String(t.reason || 'Adjustment').slice(0,90)
+        + ' (' + String(t.when || '').slice(0,10) + ')');
+      await interaction.editReply('**SkyMiles history for ' + member.displayName + '**\n'
+        + (lines.length ? lines.join('\n') : 'No activity yet.'));
       return;
     }
-    const member = interaction.options.getUser('member', true);
-    const miles = interaction.options.getInteger('miles', true);
-    const result = await skyMiles('award', {
-      user_id: member.id, miles, awarded_by_id: interaction.user.id,
-      flight_id: interaction.options.getString('flight-id', true),
-      reason: interaction.options.getString('reason', true),
-    });
-    await interaction.editReply('Recorded **' + result.actual_change.toLocaleString()
-      + '** SkyMiles for **' + member.displayName + '**. New balance: **' + result.balance.toLocaleString()
-      + '**. Google Sheets will be updated by the reliable outbox.');
+    const reason = interaction.options.getString('reason', true).trim();
+    const reference = ['award-flight','award'].includes(action) ? interaction.options.getString('flight-id',true) : '';
+    let signed = action === 'award' ? interaction.options.getInteger('miles',true)
+      : interaction.options.getInteger('amount',false);
+    if (action === 'deduct') signed = -signed;
+    let result;
+    const base = {
+      user_id:member.id, awarded_by_id:interaction.user.id,
+      reason, reference, interaction_id:interaction.id
+    };
+    if (action === 'set') {
+      result = await skyMiles('set',{...base,balance:interaction.options.getInteger('balance',true)});
+    } else {
+      result = await skyMiles('award',{...base,miles:signed});
+    }
+    await interaction.editReply(
+      (result.duplicate ? 'This command was already recorded. ' : 'Recorded. ')
+      + '**' + Number(result.actual_change).toLocaleString() + '** SkyMiles for **'
+      + member.displayName + '**. New balance: **' + Number(result.balance).toLocaleString()
+      + '**. The website ledger remains authoritative.'
+    );
   } catch (error) {
     console.error('SkyMiles request failed:', error);
-    await interaction.editReply('SkyMiles was not updated: ' + String(error.message || error).slice(0, 250));
+    await interaction.editReply('SkyMiles was not updated: ' + String(error.message || error).slice(0,220));
   }
 }
 
