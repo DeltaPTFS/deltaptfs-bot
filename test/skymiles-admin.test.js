@@ -30,3 +30,12 @@ test('SkyMiles commands call canonical website and verify live permissions', () 
   assert.ok(src.includes("skyMiles('set'"));
   assert.ok(src.includes("skyMiles('history'"));
 });
+
+ test('AMEX commands share the live leadership-only website ledger',()=>{
+ const src=fs.readFileSync(path.join(__dirname,'../src/index.js'),'utf8');
+ assert.ok(src.includes(".setName('amex')"));
+ assert.ok(src.includes("skyMiles('amex-'+action,payload)"));
+ assert.ok(src.includes("SKYMILES_LEADERSHIP_ROLE_IDS"));
+ assert.ok(src.includes("amexCommand.toJSON()"));
+ assert.ok(src.includes("awarded_by_id:interaction.user.id"));
+ });
