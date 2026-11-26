@@ -26,7 +26,7 @@ test('banner attachments must be small Discord CDN images',()=>{
 test('legacy SkyMiles balance and awards remain available under a separate name',()=>{
   const index=readFileSync(join(__dirname,'../src/index.js'),'utf8');
   assert.match(index,/\.setName\('skymiles-ledger'\)/);
-  assert.match(index,/handleSkyMilesSignup\(interaction\)/);
+  assert.match(index,/handleSkyMilesSignup\(interaction,\{leadershipAuthorized:true\}\)/);
   assert.match(index,/handleSkyMiles\(interaction\)/);
 });
 
