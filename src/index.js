@@ -21,6 +21,7 @@ const {
 } = require('./sheets');
 const { createWebsiteSyncHandler } = require('./website-sync');
 const { websiteConfigured, skyMiles } = require('./website-client');
+const { webNewsCommand, handleWebNews } = require('./web-news');
 const {hasSkyMilesAdminRole} = require('./skymiles-admin');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
 const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
@@ -724,7 +725,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
       reactionRoleCommand.toJSON(), timeoutCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(),
-      deleteCommand.toJSON(), newsletterCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(), flightFormatCommand.toJSON(),
+      deleteCommand.toJSON(), newsletterCommand.toJSON(), webNewsCommand.toJSON(), flightHostCommand.toJSON(), rosterCommand.toJSON(), flightFormatCommand.toJSON(),
     ]);
     console.log(`Ready as ${readyClient.user.tag} (version ${botVersion}). Commands are registered.`);
   } catch (error) {
@@ -2077,6 +2078,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.commandName === 'delete') {
     await handleDeleteMessages(interaction);
+    return;
+  }
+  if (interaction.commandName === 'web-news') {
+    await handleWebNews(interaction, config.guildId || MAIN_DELTA_GUILD_ID);
     return;
   }
   if (interaction.commandName === 'newsletter') {
