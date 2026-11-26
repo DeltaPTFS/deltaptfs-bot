@@ -22,6 +22,7 @@ const {
 const { createWebsiteSyncHandler } = require('./website-sync');
 const { websiteConfigured, skyMiles } = require('./website-client');
 const { webNewsCommand, handleWebNews } = require('./web-news');
+const { startWebsiteReleaseMonitor } = require('./website-release');
 const {hasSkyMilesAdminRole} = require('./skymiles-admin');
 const { flightHostCommand, handleFlightHost } = require('./flight-host');
 const {command:flightFormatCommand,preview:previewFlightFormat,action:flightFormatAction}=require('./flight-formats');
@@ -713,6 +714,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 
 client.once(Events.ClientReady, async (readyClient) => {
   health.markReady();
+  startWebsiteReleaseMonitor(readyClient);
   if (database.configured) {
     try { await database.init(); } catch (error) { console.error('PostgreSQL initialization failed:', error); }
   } else {
