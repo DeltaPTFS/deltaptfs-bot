@@ -124,7 +124,7 @@ const setupCommand = new SlashCommandBuilder()
 
 const skyMilesLedgerCommand = new SlashCommandBuilder()
   .setName('skymiles-ledger')
-  .setDescription('Review virtual SkyMiles or adjust balances with Admin permissions')
+  .setDescription('Delta Leadership: review and adjust virtual SkyMiles')
   .addSubcommand((sub) => sub.setName('balance').setDescription('View a member’s virtual SkyMiles')
     .addUserOption((o) => o.setName('member').setDescription('Member to check')))
   .addSubcommand((sub) => sub.setName('leaderboard').setDescription('Show top SkyMiles members'))
@@ -153,6 +153,60 @@ const skyMilesLedgerCommand = new SlashCommandBuilder()
     .addIntegerOption((o) => o.setName('miles').setDescription('Positive award or negative correction').setRequired(true))
     .addStringOption((o) => o.setName('flight-id').setDescription('Flight reference').setRequired(true))
     .addStringOption((o) => o.setName('reason').setDescription('Required reason').setRequired(true)));
+
+const amexCommand = new SlashCommandBuilder()
+  .setName('amex')
+  .setDescription('Delta Leadership: manage virtual AMEX registration and benefits')
+  .addSubcommand(s=>s.setName('register').setDescription('Register an approved virtual card')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true))
+    .addStringOption(o=>o.setName('tier').setDescription('Approved card tier').setRequired(true).addChoices({name:'Blue',value:'blue'},{name:'Gold',value:'gold'},{name:'Platinum',value:'platinum'},{name:'Reserve',value:'reserve'}))
+    .addStringOption(o=>o.setName('reason').setDescription('Registration verification reference or reason').setRequired(true).setMaxLength(220))
+    .addIntegerOption(o=>o.setName('welcome-miles').setDescription('Required for Gold: approved promotion amount, 0–80,000').setMinValue(0).setMaxValue(80000)))
+  .addSubcommand(s=>s.setName('status').setDescription('Review a member’s registered card and benefits')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true)))
+  .addSubcommand(s=>s.setName('purchase').setDescription('Record a verified eligible virtual purchase')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true))
+    .addIntegerOption(o=>o.setName('robux').setDescription('Verified Robux amount').setMinValue(1).setMaxValue(100000).setRequired(true))
+    .addStringOption(o=>o.setName('category').setDescription('Verified eligible purchase category').setRequired(true).addChoices({name:'Delta',value:'delta'},{name:'Eligible Delta partner',value:'partner'},{name:'Other eligible purchase',value:'other'}))
+    .addStringOption(o=>o.setName('reference').setDescription('Unique verified purchase reference').setRequired(true).setMaxLength(100))
+    .addStringOption(o=>o.setName('reason').setDescription('Audit reason').setRequired(true).setMaxLength(220)))
+  .addSubcommand(s=>s.setName('use').setDescription('Record verified fulfillment of one virtual benefit')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true))
+    .addStringOption(o=>o.setName('benefit').setDescription('Benefit to mark used').setRequired(true).addChoices({name:'First flight Comfort Plus',value:'comfort_first'},{name:'Second flight First Class',value:'first_second'},{name:'Welcome Comfort Plus',value:'welcome_comfort'},{name:'Sky Club guest pass',value:'guest_pass'},{name:'Virtual security credit',value:'security_credit'}))
+    .addStringOption(o=>o.setName('reference').setDescription('Eligible flight or fulfillment reference').setRequired(true).setMaxLength(100))
+    .addStringOption(o=>o.setName('reason').setDescription('Audit reason').setRequired(true).setMaxLength(220)))
+  .addSubcommand(s=>s.setName('renew').setDescription('Award Reserve annual headstart and refresh annual guest pass')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true))
+    .addStringOption(o=>o.setName('reason').setDescription('Verified renewal reason').setRequired(true).setMaxLength(220)))
+  .addSubcommand(s=>s.setName('revoke').setDescription('Deactivate card privileges; does not deduct earned miles')
+    .addUserOption(o=>o.setName('member').setDescription('Linked SkyMiles member').setRequired(true))
+    .addStringOption(o=>o.setName('reason').setDescription('Audit reason').setRequired(true).setMaxLength(220)));
+
+async function handleAmex(interaction) {
+  if (!(await skyMilesAdminAllowed(interaction))) {
+    await interaction.reply({content:'Only Delta Leadership or Founders may manage virtual cards.',ephemeral:true});return;
+  }
+  if (!websiteConfigured()) {await interaction.reply({content:'Website ledger connection is not configured.',ephemeral:true});return;}
+  const action=interaction.options.getSubcommand();
+  const member=interaction.options.getUser('member',true);
+  const payload={user_id:member.id,awarded_by_id:interaction.user.id,interaction_id:interaction.id};
+  if(action!=='status')payload.reason=interaction.options.getString('reason',true);
+  if(action==='register'){payload.tier=interaction.options.getString('tier',true);payload.welcome_miles=interaction.options.getInteger('welcome-miles');}
+  if(action==='purchase'){payload.robux=interaction.options.getInteger('robux',true);payload.category=interaction.options.getString('category',true);}
+  if(action==='use')payload.benefit=interaction.options.getString('benefit',true);
+  if(['purchase','use'].includes(action))payload.reference=interaction.options.getString('reference',true);
+  await interaction.deferReply({ephemeral:true});
+  try {
+    const r=await skyMiles('amex-'+action,payload), card=r.card;
+    const lines=[r.duplicate?'Already recorded; no additional award.':'Website ledger synchronized.',
+      card?'SkyMiles '+card.name+' — Registered':'No active virtual card',
+      'SkyMiles: '+Number(r.balance).toLocaleString()+' | MQP: '+Number(r.mqp).toLocaleString()];
+    if(r.miles_awarded)lines.push('Miles awarded: '+Number(r.miles_awarded).toLocaleString());
+    if(r.mqp_awarded)lines.push('MQP awarded: '+Number(r.mqp_awarded).toLocaleString());
+    if(card)for(const credit of card.credits_display||[])lines.push(credit.label+': '+credit.remaining+' remaining');
+    await interaction.editReply({content:lines.join('\n'),allowedMentions:{parse:[]}});
+  }catch(error){await interaction.editReply({content:'AMEX not updated: '+String(error.message||error).slice(0,220),allowedMentions:{parse:[]}});}
+}
 
 const versionCommand = new SlashCommandBuilder()
   .setName('bot-version')
@@ -722,7 +776,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
   try {
     await readyClient.application.commands.set([
-      setupCommand.toJSON(), skyMilesSignupCommand.toJSON(), skyMilesLedgerCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
+      setupCommand.toJSON(), skyMilesSignupCommand.toJSON(), skyMilesLedgerCommand.toJSON(), amexCommand.toJSON(), versionCommand.toJSON(), infoCommand.toJSON(),
       logsUpdateCommand.toJSON(),
       updateCommand.toJSON(), getRoleCommand.toJSON(), authenticateCommand.toJSON(), unlinkCommand.toJSON(),
       authenticationConfigCommand.toJSON(), authenticationPanelCommand.toJSON(), createButtonCommand.toJSON(),
@@ -766,7 +820,7 @@ async function skyMilesAdminAllowed(interaction) {
   try {
     const member = await interaction.guild.members.fetch({user:interaction.user.id,force:true});
     return Boolean(member && hasSkyMilesAdminRole(
-      member.roles.cache.map((role) => role.id), process.env.SKYMILES_ADMIN_ROLE_IDS
+      member.roles.cache.map((role) => role.id), process.env.SKYMILES_LEADERSHIP_ROLE_IDS || '1539005297417519205,1539005030189891684'
     ));
   } catch (error) {
     console.warn('Live Discord SkyMiles role check failed:', String(error.message || error));
@@ -787,20 +841,20 @@ async function handleSkyMiles(interaction) {
   const action = interaction.options.getSubcommand();
   const mutation = ['add','deduct','set','award-flight','award'].includes(action);
   // Guard before defer/API call so unauthorized users never change balances.
-  if (mutation && !(await skyMilesAdminAllowed(interaction))) {
-    await interaction.reply({ content: 'Only Owner and Staff Admin roles with website Admin access can adjust SkyMiles.', ephemeral: true });
+  if (!(await skyMilesAdminAllowed(interaction))) {
+    await interaction.reply({ content: 'Only Delta Leadership or Founders can use SkyMiles commands.', ephemeral: true });
     return;
   }
-  await interaction.deferReply({ ephemeral: action !== 'leaderboard' });
+  await interaction.deferReply({ ephemeral: true });
   try {
     if (action === 'balance') {
       const member = interaction.options.getUser('member') ?? interaction.user;
-      const result = await skyMiles('balance', {user_id:member.id});
+      const result = await skyMiles('balance', {user_id:member.id,awarded_by_id:interaction.user.id});
       await interaction.editReply('**' + member.displayName + '** has **' + Number(result.balance).toLocaleString() + '** virtual SkyMiles.');
       return;
     }
     if (action === 'leaderboard') {
-      const result = await skyMiles('leaderboard', {});
+      const result = await skyMiles('leaderboard', {awarded_by_id:interaction.user.id});
       const lines = (result.leaders || []).map((entry, i) =>
         (i + 1) + '. **' + (entry.displayName || entry.userId) + '** — ' + Number(entry.balance).toLocaleString());
       await interaction.editReply(lines.length ? '**Virtual SkyMiles Leaderboard**\n' + lines.join('\n') : 'No registered SkyMiles members yet.');
@@ -814,7 +868,7 @@ async function handleSkyMiles(interaction) {
         await interaction.editReply('Only the member or a website Staff Admin can view this history.');
         return;
       }
-      const result = await skyMiles('history', {user_id:member.id});
+      const result = await skyMiles('history', {user_id:member.id,awarded_by_id:interaction.user.id});
       const lines = (result.transactions || []).map((t) =>
         (Number(t.change) >= 0 ? '+' : '') + Number(t.change).toLocaleString()
         + ' — ' + String(t.reason || 'Adjustment').slice(0,90)
@@ -2023,9 +2077,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.commandName === 'skymiles') {
-    await handleSkyMilesSignup(interaction);
+    if (!(await skyMilesAdminAllowed(interaction))) { await interaction.reply({content:'Only Delta Leadership or Founders may post the SkyMiles guide.',ephemeral:true}); return; }
+    await handleSkyMilesSignup(interaction,{leadershipAuthorized:true});
     return;
   }
+  if (interaction.commandName === 'amex') { await handleAmex(interaction); return; }
   if (interaction.commandName === 'skymiles-ledger') {
     await handleSkyMiles(interaction);
     return;

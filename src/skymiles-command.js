@@ -27,7 +27,6 @@ const SIGNUP_TEXT=[
 
 const command=new SlashCommandBuilder().setName('skymiles')
   .setDescription('Post the SkyMiles signup guide with a website button and optional banners')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addAttachmentOption(o=>o.setName('top-banner').setDescription('Optional image to send above the guide'))
   .addAttachmentOption(o=>o.setName('bottom-banner').setDescription('Optional image to send below the guide'));
 
@@ -50,12 +49,12 @@ async function bannerFile(attachment,prefix){
   return new AttachmentBuilder(bytes,{name:prefix+ext});
 }
 
-async function handle(interaction,{guildId=MAIN_GUILD}={}){
+async function handle(interaction,{guildId=MAIN_GUILD,leadershipAuthorized=false}={}){
   if(!interaction.inGuild()||interaction.guildId!==guildId){
     await interaction.reply({content:'Use this command in the Delta Air Lines server.',ephemeral:true});return;
   }
-  if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)){
-    await interaction.reply({content:'Manage Server permission is needed to post the guide.',ephemeral:true});return;
+  if(!leadershipAuthorized){
+    await interaction.reply({content:'Only Delta Leadership or Founders may post the guide.',ephemeral:true});return;
   }
   const top=interaction.options.getAttachment('top-banner');
   const bottom=interaction.options.getAttachment('bottom-banner');
